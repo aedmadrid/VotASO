@@ -1,0 +1,126 @@
+# Configuración de Cloudflare Workers para VotaASO
+# Repositorio público, agnóstico y auditable para elecciones institucionales.
+# Ningún dato sensible ni de organización está fijado en el código fuente:
+# todo se configura mediante variables de entorno ([vars]) y secretos (wrangler secret put).
+
+name = "votaso"
+compatibility_date = "2026-08-08"
+compatibility_flags = ["nodejs_compat"]
+
+# Dominio personalizado en Cloudflare
+routes = [
+  { pattern = "votaso.aedm.org.es/*", zone_name = "aedm.org.es" },
+]
+
+# 1. El padrón de votantes (KV) para evitar el doble voto de forma atómica
+# Guarda únicamente: clave = "padron:{eleccion_id}:{sha256(sub + salt)}" -> valor = "VOTÓ"
+# (con caducidad automática para cumplir con la minimización de datos del RGPD).
+kv_namespaces = [
+  { binding = "PADRON_KV", id = "5ade824fe21249af84cf50d2b5909431" }
+]
+
+# 2. La urna transparente e inmutable (D1 SQLite) donde caen los votos anónimos
+# y donde se almacenan las convocatorias electorales y la cadena de bloques (hash-chain).
+[[d1_databases]]
+binding = "URNA_D1"
+database_name = "votaso-urna-db"
+database_id = "21fc1ae4-dcc7-4be3-b0bd-3f1f2a023841"
+
+# Binding directo Worker-a-Worker dentro de la misma zona de Cloudflare (evita el bloqueo 522 entre rutas de la misma zona)
+[[services]]
+binding = "OAUTH_SERVICE"
+service = "aso-portal"
+
+# 3. Configuración Agnóstica de la Organización y del Proveedor OAuth 2.0
+# Cualquier organización puede adaptar VotaASO cambiando estas variables sin tocar src/index.js.
+[vars]
+# Datos visuales y legales de la organización
+ORG_NAME = "AEDM — (aso)ciación de estudiantes de diseño de madrid"
+ORG_SHORT_NAME = "AEDM"
+ORG_LOGO_URL = "https://aedm.org.es/aedm.svg"
+ORG_WEBSITE_URL = "https://aedm.org.es"
+ORG_PRIVACY_URL = "https://aedm.org.es/privacidad/"
+ORG_REPO_URL = "https://github.com/aedmadrid/votaso"
+ORG_CONTACT_EMAIL = "aadm@esdmadrid.es"
+
+# Modo de doble verificación (específico cuando el proveedor OAuth es VerificASO o similar).
+# Si `ENABLE_DOUBLE_VERIFICATION_TALLY = "false"` (o si el OAuth es externo a VerificASO),
+# todos los votos tienen el mismo rango y no se exige ni muestra el desglose de doble cuenta.
+ENABLE_DOUBLE_VERIFICATION_TALLY = "true"
+ORG_PROFILE_URL = "https://verificaso.aedm.org.es/perfil"
+ORG_DOUBLE_ACCOUNT_HINT = "Vincula tus dos cuentas (@esdmadrid.es y @educa.madrid.org) en VerificASO para que tu voto se contabilice como Voto Muy Fiable."
+
+# Endpoints del proveedor OAuth 2.0 (por defecto configurados para VerificASO,
+# pero compatibles con cualquier IdP OAuth2/OIDC estándar)
+OAUTH_AUTH_URL = "https://verificaso.aedm.org.es/oauth/authorize"
+OAUTH_TOKEN_URL = "https://verificaso.aedm.org.es/api/oauth/token"
+OAUTH_USERINFO_URL = "https://verificaso.aedm.org.es/api/oauth/userinfo"
+OAUTH_SCOPES = "identity profile.email.esd profile.id_educamadrid profile.name profile.membership"
+
+# Mapeo agnóstico de campos JSON devueltos por OAUTH_USERINFO_URL
+CLAIM_ID = "sub"
+CLAIM_EMAIL = "email"
+CLAIM_NAME = "nombre"
+CLAIM_SURNAME = "apellido"
+CLAIM_IS_MEMBER = "es_socio"
+CLAIM_MEMBER_LEVEL = "tipo_asociado"
+MEMBER_REQUIRED_LEVEL = "pleno_derecho"
+CLAIM_DOUBLE_VERIFIED = "verified_double"
+CLAIM_IS_ADMIN = "is_admin"
+CLAIM_ACCOUNT_PRIMARY = "email_esd"
+CLAIM_ACCOUNT_SECONDARY = "id_educamadrid"
+
+# Correos con permisos de administrador (pueden acceder a /admin y crear/cerrar votaciones)
+# Lista separada por comas (sin espacios o con espacios, se normaliza en minúsculas).
+# En un despliegue público conviene definirlos como secreto para no exponerlos en el repositorio:
+#   npx wrangler secret put ADMIN_EMAILS
+ADMIN_EMAILS = "lucas.peinado@esdmadrid.es,aadm@esdmadrid.es,secretaria@aedm.org.es"
+
+# Días de retención del hash de participación en el padrón KV antes de su borrado automático (RGPD)
+PADRON_TTL_DAYS = "90"
+
+# Autenticación por cabeceras inyectadas por un proxy externo (X-User-Email).
+# ⚠️  DEJA ESTO EN "false" si el Worker es accesible públicamente: quien pueda
+#     enviar la cabecera `X-User-Email: admin@...` suplantaría a un administrador.
+#     Actívalo solo detrás de Cloudflare Access u otro proxy que la inyecte de forma fiable.
+TRUST_IDENTITY_HEADERS = "false"
+
+# Secreto adicional que el proxy debe enviar en `X-Identity-Secret` cuando
+# `TRUST_IDENTITY_HEADERS = "true"`. Vacío = no se exige secreto adicional.
+# Definirlo como secreto de Wrangler:  npx wrangler secret put IDENTITY_HEADERS_SECRET
+IDENTITY_HEADERS_SECRET = ""
+
+# --- Capacidad de pertenencia del proveedor OAuth ----------------------------
+# Determina si se puede ofrecer el censo "solo socios" en el panel de admin.
+#   "auto"   → se deduce de lo que el proveedor devuelve realmente (por defecto).
+#              Si el IdP no devuelve claims de pertenencia, la opción desaparece
+#              y las votaciones se dirigen a todos los usuarios registrados.
+#   "always" → el proveedor sí distingue socios: la opción está siempre disponible.
+#   "never"  → el proveedor no distingue socios: la opción nunca se ofrece.
+OAUTH_MEMBERSHIP_MODE = "auto"
+
+# --- Pesos del recuento electoral -------------------------------------------
+# Valor electoral de cada voto. Un voto "muy fiable" (doble cuenta verificada)
+# vale VOTO_PESO_FIABLE y uno "ordinario" vale VOTO_PESO_ORDINARIO.
+# En las votaciones con censo "solo_socios" NO se pondera: el censo ya está
+# acotado a socios de pleno derecho, así que todos los votos valen lo mismo.
+VOTO_PESO_FIABLE = "1"
+VOTO_PESO_ORDINARIO = "0.5"
+
+# ============================================================================
+# ENTORNO
+# "production" activa las salvaguardas de producción: por ejemplo, `SECRET_SALT`
+# pasa a ser obligatoria y la aplicación se niega a arrancar si falta.
+# En desarrollo se admite un valor por defecto (con aviso por consola).
+# ============================================================================
+ENVIRONMENT = "production"
+
+# ============================================================================
+# SECRETOS (Definir con `npx wrangler secret put <NOMBRE>` o en `.dev.vars` para local):
+# - OAUTH_CLIENT_ID     : Client ID registrado en el proveedor OAuth (ej. en /admin/apps de VerificASO)
+# - OAUTH_CLIENT_SECRET : Client Secret del proveedor OAuth (opcional si usa solo PKCE público)
+# - SECRET_SALT         : Semilla criptográfica aleatoria de alta entropía (mínimo 32 bytes)
+#                         para cegar identidades del padrón, firmar sesiones y firmar recibos.
+# - IDENTITY_HEADERS_SECRET : Secreto que el proxy debe enviar en `X-Identity-Secret`
+#                         (solo si TRUST_IDENTITY_HEADERS = "true")
+# ============================================================================

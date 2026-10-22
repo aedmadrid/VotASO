@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verificar:
+    name: Tests y build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Clonar el repositorio
+        uses: actions/checkout@v4
+
+      - name: Instalar Node.js
+        uses: actions/setup-node@v4
+        with:
+          # Astro 7 exige Node >= 22.23.4
+          node-version: 22.23.4
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Comprobar que no se han versionado secretos
+        run: |
+          if git ls-files --error-unmatch .dev.vars 2>/dev/null; then
+            echo "::error::El fichero .dev.vars no debe estar versionado."
+            exit 1
+          fi
+          if git ls-files --error-unmatch '*.pem' '*.key' 2>/dev/null; then
+            echo "::error::Se han detectado ficheros de credenciales versionados."
+            exit 1
+          fi
+          echo "OK: no hay secretos versionados."
+
+      - name: Comprobar las dependencias
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Verificar los tipos
+        run: npm run typecheck
+
+      - name: Ejecutar los tests
+        run: npm test
+
+      - name: Compilar
+        run: npm run build

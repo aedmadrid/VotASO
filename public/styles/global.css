@@ -1,0 +1,347 @@
+@font-face {
+    font-family: MainFont;
+    src: url("/fonts/NeueMontreal-Regular.ttf") format(truetype);
+}
+
+@font-face {
+    font-family: TitleFont;
+    src: url("/fonts/PKiko-Regular.otf");
+}
+
+
+.material-symbols-outlined {
+  font-variation-settings:
+  'FILL' 0,
+  'wght' 300,
+  'GRAD' 0,
+  'opsz' 24
+}
+
+:root {
+    --verde: #36e452;
+    --azul: #3cadff;
+    --lila: #bacefb;
+    --rojo: #fe3d46;
+    --negro: #040406;
+    --blanco: #fdfdfd;
+    --gris1: #f7f7f7;
+    --gris2: #e5e5e5;
+    --gris3: #afafaf;
+    --gris4: #777777;
+    --gris5: #4b4b4b;
+
+    --color-bg: var(--blanco);
+    --color-text: var(--negro);
+    --color-text-muted: var(--gris4);
+    --color-border: var(--gris2);
+    --color-divider: var(--gris2);
+    --color-primary: var(--verde);
+    --color-primary-hover: #2bc744;
+    --color-surface: var(--gris1);
+    --color-error: var(--rojo);
+
+    --font-display: TitleFont, serif;
+    --font-body: MainFont, Arial, Helvetica, sans-serif;
+
+    --text-xs: clamp(0.75rem, 0.7rem + 0.25vw, 0.875rem);
+    --text-sm: clamp(0.875rem, 0.8rem + 0.35vw, 1rem);
+    --text-base: clamp(1rem, 0.95rem + 0.25vw, 1.125rem);
+    --text-lg: clamp(1.125rem, 1rem + 0.75vw, 1.5rem);
+    --text-2xl: clamp(2rem, 1.5rem + 2vw, 3rem);
+    --space-2: 0.5rem;
+    --space-3: 0.75rem;
+    --space-4: 1rem;
+    --space-5: 1.25rem;
+    --space-6: 1.5rem;
+    --space-8: 2rem;
+    --space-16: 4rem;
+    --radius-sm: 0;
+    --transition: 150ms ease;
+    --page-max: 800px;
+}
+
+* {
+    font-family: var(--font-body);
+    color: var(--color-text);
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+html {
+    width: 100%;
+    -webkit-font-smoothing: antialiased;
+    /* Reserva el espacio del scrollbar: evita el salto cuando un diálogo
+       (Radix, p. ej. MDXEditor) bloquea el scroll del body. */
+    scrollbar-gutter: stable;
+}
+
+body {
+    min-height: 100dvh;
+    background-color: var(--color-bg);
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+    font-size: var(--text-base);
+}
+
+img,
+svg {
+    display: block;
+    max-width: 100%;
+}
+
+button,
+input,
+select,
+textarea {
+    font: inherit;
+}
+
+button {
+    cursor: pointer;
+    background: none;
+    border: none;
+}
+
+a {
+    color: inherit;
+    text-decoration: none;
+}
+
+.page {
+    min-height: 100dvh;
+    max-width: var(--page-max);
+    margin-inline: auto;
+    padding: var(--space-6) var(--space-8) var(--space-16);
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+}
+
+@media (max-width: 600px) {
+    .page {
+        padding: var(--space-4) var(--space-4) var(--space-16);
+    }
+}
+
+.page-title {
+    font-family: var(--font-display);
+    font-size: var(--text-2xl);
+    font-weight: 400;
+    line-height: 1.1;
+    margin-bottom: var(--space-8);
+}
+
+.back-link {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin-bottom: var(--space-4);
+    transition: opacity var(--transition);
+}
+
+.back-link:hover {
+    opacity: 0.6;
+}
+
+.page-footer {
+    margin-top: auto;
+    padding-top: var(--space-8);
+}
+
+.field {
+    display: flex;
+    flex-direction: column;
+    margin-bottom: var(--space-6);
+}
+
+.field-label {
+    font-size: var(--text-xs);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+    margin-bottom: var(--space-2);
+}
+
+.field-value {
+    font-size: var(--text-lg);
+    padding-bottom: var(--space-3);
+    border-bottom: 1px solid var(--color-border);
+}
+
+.field input {
+    font-size: var(--text-lg);
+    border: none;
+    border-bottom: 1px solid var(--color-border);
+    padding: var(--space-2) 0 var(--space-3);
+    background: transparent;
+    width: 100%;
+    outline: none;
+}
+
+.field input:focus {
+    border-bottom-color: var(--color-primary);
+}
+
+.btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    padding: var(--space-4) var(--space-6);
+    font-size: var(--text-base);
+    font-weight: 500;
+    border-radius: var(--radius-sm);
+    min-height: 52px;
+    transition: background var(--transition);
+}
+
+.btn-primary {
+    background: var(--color-primary);
+    color: var(--negro);
+}
+
+.btn-primary:hover {
+    background: var(--color-primary-hover);
+}
+
+.btn-outline {
+    background: transparent;
+    color: var(--color-primary);
+    border: 1px solid var(--color-primary);
+}
+
+.btn-ghost {
+    background: transparent;
+    border: 1px solid var(--color-border);
+}
+
+.btn-stack {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+}
+
+/* Misma distribución que GranBoton con orden={2}: texto a la izquierda,
+   icono a la derecha, separados (row-reverse + space-between). */
+.btn.left {
+    flex-direction: row-reverse;
+    justify-content: space-between;
+}
+
+.btn.left p {
+    margin: 0;
+}
+
+.text-muted {
+    color: var(--color-text-muted);
+}
+
+.text-sm {
+    font-size: var(--text-sm);
+}
+
+.field-disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.field-badge {
+    display: inline-block;
+    font-size: 10px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    background: var(--color-divider);
+    color: var(--color-text-muted);
+    padding: 1px 6px;
+    margin-left: var(--space-2);
+    vertical-align: middle;
+}
+
+.select-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+    border-bottom: 1px solid var(--color-border);
+}
+
+.field-select {
+    width: 100%;
+    appearance: none;
+    background: transparent;
+    border: none;
+    padding: var(--space-2) 0 var(--space-3);
+    font-size: var(--text-lg);
+    outline: none;
+    cursor: pointer;
+    color: var(--color-text);
+}
+
+.field-select:focus {
+    outline: none;
+}
+
+.select-arrow {
+    position: absolute;
+    right: 0;
+    font-size: var(--text-sm);
+    color: var(--color-text-muted);
+    pointer-events: none;
+}
+
+/* ── Modal (compartido: usado en perfil.astro y admin) ─────────────── */
+.modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+}
+.modal-content {
+    background: var(--color-bg);
+    padding: var(--space-6);
+    border-radius: 0;
+    width: 90%;
+    max-width: 500px;
+    max-height: 90vh;
+    overflow-y: auto;
+}
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--space-4);
+}
+.modal-header h2 {
+    font-size: var(--text-lg);
+    font-weight: 600;
+}
+.modal-close {
+    font-size: 24px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    line-height: 1;
+}
+.modal-actions {
+    display: flex;
+    gap: var(--space-3);
+    margin-top: var(--space-4);
+}
+.field-hint {
+    display: block;
+    font-size: var(--text-xs);
+    color: var(--color-text-muted);
+    margin-top: var(--space-2);
+}
+
+@media (max-width: 600px) {
+    .page {
+        padding: var(--space-4);
+    }
+}

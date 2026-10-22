@@ -1,0 +1,97 @@
+---
+/**
+ * Default.astro — Layout minimalista (mismo sistema que Layout.astro de VerificASO).
+ * Sin barra superior ni footer pesado; usa /styles/global.css y /styles/admin.css.
+ */
+interface Props {
+  title: string;
+  voter?: unknown;
+}
+
+const { title } = Astro.props;
+const isApp = Astro.url.searchParams.get("app") === "1";
+const esIOS = /iPhone|iPad|iPod/i.test(Astro.request.headers.get("user-agent") ?? "");
+const bodyClass = [isApp ? "in-app" : "", isApp && esIOS ? "in-app-ios" : ""]
+  .filter(Boolean)
+  .join(" ");
+---
+
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{title}</title>
+    <link rel="stylesheet" href="/styles/global.css" />
+    <link rel="stylesheet" href="/styles/admin.css" />
+    <style is:global>
+      body.in-app .back-link {
+        display: none !important;
+      }
+      body.in-app-ios main {
+        padding-top: 120px;
+      }
+      .prose {
+        line-height: 1.7;
+        color: var(--color-text);
+      }
+      .prose h1,
+      .prose h2,
+      .prose h3,
+      .prose h4 {
+        margin: var(--space-4) 0 var(--space-2);
+        font-weight: 600;
+      }
+      .prose p {
+        margin-bottom: var(--space-3);
+      }
+      .prose p:last-child {
+        margin-bottom: 0;
+      }
+      .prose a {
+        color: var(--color-text);
+        text-decoration: underline;
+      }
+      .prose ul,
+      .prose ol {
+        margin: var(--space-3) 0;
+        padding-left: var(--space-6);
+      }
+      .prose li {
+        margin-bottom: var(--space-2);
+      }
+      .prose blockquote {
+        border-left: 2px solid var(--color-primary);
+        padding-left: var(--space-4);
+        color: var(--color-text-muted);
+        margin: var(--space-3) 0;
+      }
+      .prose code {
+        font-family: monospace;
+        background: var(--color-surface);
+        padding: 2px 6px;
+        font-size: var(--text-xs);
+      }
+    </style>
+  </head>
+  <body class={bodyClass}>
+    <slot />
+
+    <script>
+      const isApp = new URLSearchParams(window.location.search).get("app") === "1";
+      if (isApp) {
+        document.querySelectorAll("a[href]").forEach((a) => {
+          const raw = a.getAttribute("href");
+          if (!raw || !raw.startsWith("/")) return;
+          try {
+            const url = new URL(raw, window.location.origin);
+            if (!url.searchParams.has("app")) url.searchParams.set("app", "1");
+            a.setAttribute("href", url.pathname + url.search + url.hash);
+          } catch {
+            /* ignore */
+          }
+        });
+      }
+    </script>
+  </body>
+</html>

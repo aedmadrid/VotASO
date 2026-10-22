@@ -1,0 +1,677 @@
+---
+import Default from "../layouts/Default.astro";
+import MarkdownEditor from "../components/MarkdownEditor.tsx";
+import { censusSociosDisponible, getBindings, getConfig } from "../lib/config";
+import { resolveAuthenticatedVoter } from "../lib/session";
+import { listarElecciones } from "../lib/urna";
+
+const cfg = getConfig();
+const { URNA_D1 } = getBindings();
+const voter = await resolveAuthenticatedVoter(Astro.request, cfg);
+
+// Si el proveedor OAuth no distingue socios, el censo `solo_socios` no se
+// ofrece: la opción desaparece del panel y el servidor la degrada a
+// `registrados` aunque se solicite a mano.
+const puedeCensoSocios = voter
+    ? censusSociosDisponible(cfg, voter.tieneClaimsDePertenencia)
+    : false;
+
+if (!voter) {
+    return Astro.redirect(`/auth/login?next=${encodeURIComponent("/admin")}`);
+}
+
+const elecciones = voter.isAdmin ? await listarElecciones(URNA_D1) : [];
+---
+
+<Default title="Admin — VotASO">
+    <main class="page">
+        <a href="/" class="back-link text-sm text-muted">
+            ← Volver
+        </a>
+
+        {!voter.isAdmin ? (
+            <div>
+                <h1 class="page-title">Acceso restringido</h1>
+                <p class="text-muted">
+                    Tu cuenta ({voter.email}) no tiene permisos de
+                    administración.
+                </p>
+            </div>
+        ) : (
+            <>
+                <div class="admin-header">
+                    <h1 class="page-title">Votaciones</h1>
+                    <p class="text-muted text-sm">{voter.email}</p>
+                    <div class="admin-header-actions">
+                        <button
+                            type="button"
+                            id="purgePadronBtn"
+                            class="btn-small"
+                        >
+                            Purgar padrón caducado
+                        </button>
+                        <span
+                            id="purgePadronResult"
+                            class="text-xs text-muted"
+                        ></span>
+                    </div>
+                </div>
+
+                <section class="admin-section">
+                    <h2 class="section-title">Nueva votación</h2>
+                    <form id="createElectionForm" class="admin-form">
+                        <div class="field">
+                            <label class="field-label" for="titulo">
+                                Título
+                            </label>
+                            <input
+                                id="titulo"
+                                name="titulo"
+                                type="text"
+                                placeholder="Cualquier cuestión que quieras someter a votación."
+                                required
+                            />
+                        </div>
+
+                        <div class="field">
+                            <label class="field-label" for="censo_tipo">
+                                Censo
+                            </label>
+                            <div class="select-wrapper">
+                                <select
+                                    id="censo_tipo"
+                                    name="censo_tipo"
+                                    class="field-select"
+                                >
+                                    {puedeCensoSocios && (
+                                        <option value="solo_socios">
+                                            Solo socios de pleno derecho
+                                        </option>
+                                    )}
+                                    <option value="registrados">
+                                        Todos los usuarios registrados
+                                    </option>
+                                </select>
+                                <span class="select-arrow">↓</span>
+                            </div>
+                            {puedeCensoSocios ? (
+                                <span class="field-hint">
+                                    Elige «solo socios» para una votación
+                                    acotada a socios de pleno derecho, o
+                                    «registrados» para abrirla a toda la
+                                    comunidad verificada.
+                                </span>
+                            ) : (
+                                <span class="field-hint">
+                                    Tu proveedor de identidad no distingue
+                                    socios, así que las votaciones se dirigen a
+                                    todos los usuarios registrados.
+                                </span>
+                            )}
+                        </div>
+
+                        <div class="field">
+                            <label
+                                class="field-label"
+                                for="ponderar_no_verificados"
+                            >
+                                Fiabilidad y ponderación de votos
+                            </label>
+                            <div class="select-wrapper">
+                                <select
+                                    id="ponderar_no_verificados"
+                                    name="ponderar_no_verificados"
+                                    class="field-select"
+                                >
+                                    <option value="1" selected>
+                                        Votos no verificados al completo cuentan
+                                        la mitad (0.5 ptos vs 1 pto)
+                                    </option>
+                                    <option value="0">
+                                        Todos los votos valen lo mismo (1 pto
+                                        cada papeleta)
+                                    </option>
+                                </select>
+                                <span class="select-arrow">↓</span>
+                            </div>
+                            <span class="field-hint">
+                                Si está activado, los votantes con una sola
+                                cuenta (verificación estándar) contarán la mitad
+                                que los que tienen ambas cuentas vinculadas para
+                                evitar votos duplicados.
+                            </span>
+                        </div>
+
+                        <div class="field">
+                            <label class="field-label" for="descripcion">
+                                Contexto
+                            </label>
+                            <MarkdownEditor
+                                name="descripcion"
+                                id="descripcion"
+                                client:only="react"
+                            />
+                            <span class="field-hint">
+                                Texto descriptivo que verán los votantes antes
+                                de elegir opción.
+                            </span>
+                        </div>
+
+                        <div class="field">
+                            <label class="field-label" for="opciones">
+                                Opciones (una por línea)
+                            </label>
+                            <textarea
+                                id="opciones"
+                                name="opciones"
+                                rows="4"
+                                required
+                                set:text={"A favor\nEn contra\nAbstención"}
+                            />
+                        </div>
+
+                        <div class="field">
+                            <label class="field-label" for="fecha_fin">
+                                Cierre
+                            </label>
+                            <input
+                                id="fecha_fin"
+                                name="fecha_fin"
+                                type="datetime-local"
+                            />
+                        </div>
+
+                        <button type="submit" class="btn btn-primary">
+                            Crear votación
+                        </button>
+                    </form>
+                </section>
+
+                <section class="admin-section">
+                    <h2 class="section-title">Votaciones creadas</h2>
+                    <div class="notes-list">
+                        {elecciones.length === 0 ? (
+                            <p class="text-muted">No hay votaciones todavía.</p>
+                        ) : (
+                            elecciones.map((el) => (
+                                <div
+                                    class="note-item election-admin-item"
+                                    data-id={el.id}
+                                    data-titulo={el.titulo}
+                                    data-descripcion={el.descripcion}
+                                    data-censo={el.censo_tipo}
+                                    data-ponderar={
+                                        el.ponderar_no_verificados === 0 ||
+                                        el.ponderar_no_verificados === false
+                                            ? "0"
+                                            : "1"
+                                    }
+                                >
+                                    <div class="note-info">
+                                        <span
+                                            class={`note-type ${el.estado === "abierta" ? "active" : "inactive"}`}
+                                        >
+                                            {el.estado}
+                                        </span>
+                                        <span class="note-title">
+                                            {el.titulo}
+                                        </span>
+                                        <span class="note-client-id">
+                                            {el.censo_tipo === "solo_socios"
+                                                ? "Solo socios"
+                                                : "Registrados"}
+                                        </span>
+                                    </div>
+                                    <div class="note-actions">
+                                        <button
+                                            type="button"
+                                            class="btn-small btn-edit btn-edit-el"
+                                            data-id={el.id}
+                                        >
+                                            Editar
+                                        </button>
+                                        <button
+                                            type="button"
+                                            class="btn-small btn-toggle btn-toggle-el"
+                                            data-id={el.id}
+                                            data-next={
+                                                el.estado === "abierta"
+                                                    ? "cerrada"
+                                                    : "abierta"
+                                            }
+                                        >
+                                            {el.estado === "abierta"
+                                                ? "Cerrar"
+                                                : "Reabrir"}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            class="btn-small btn-delete btn-delete-el"
+                                            data-id={el.id}
+                                            data-titulo={el.titulo}
+                                        >
+                                            Eliminar
+                                        </button>
+                                    </div>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                </section>
+
+                <div id="editModal" class="modal" style="display:none">
+                    <div
+                        class="modal-content"
+                        style="max-width:780px;width:94%"
+                    >
+                        <div class="modal-header">
+                            <h2>Editar votación</h2>
+                            <button
+                                type="button"
+                                class="modal-close"
+                                id="closeEditModal"
+                            >
+                                ×
+                            </button>
+                        </div>
+                        <form id="editElectionForm" class="admin-form">
+                            <input type="hidden" id="edit-id" name="id" />
+                            <div class="field">
+                                <label class="field-label" for="edit-titulo">
+                                    Título
+                                </label>
+                                <input
+                                    id="edit-titulo"
+                                    name="titulo"
+                                    type="text"
+                                    required
+                                />
+                            </div>
+                            <div class="field">
+                                <label class="field-label" for="edit-censo">
+                                    Censo
+                                </label>
+                                <div class="select-wrapper">
+                                    <select
+                                        id="edit-censo"
+                                        name="censo_tipo"
+                                        class="field-select"
+                                    >
+                                        <option value="solo_socios">
+                                            Solo socios de pleno derecho
+                                        </option>
+                                        <option value="registrados">
+                                            Todos los usuarios registrados
+                                        </option>
+                                    </select>
+                                    <span class="select-arrow">↓</span>
+                                </div>
+                            </div>
+                            <div class="field">
+                                <label class="field-label" for="edit-ponderar">
+                                    Fiabilidad y ponderación
+                                </label>
+                                <div class="select-wrapper">
+                                    <select
+                                        id="edit-ponderar"
+                                        name="ponderar_no_verificados"
+                                        class="field-select"
+                                    >
+                                        <option value="1">
+                                            Votos no verificados al completo
+                                            cuentan la mitad (0.5 ptos)
+                                        </option>
+                                        <option value="0">
+                                            Todos los votos valen lo mismo (1
+                                            pto cada papeleta)
+                                        </option>
+                                    </select>
+                                    <span class="select-arrow">↓</span>
+                                </div>
+                            </div>
+                            <div class="field">
+                                <label
+                                    class="field-label"
+                                    for="edit-descripcion"
+                                >
+                                    Contexto (.md)
+                                </label>
+                                <MarkdownEditor
+                                    name="descripcion"
+                                    id="edit-descripcion"
+                                    client:only="react"
+                                />
+                            </div>
+                            <div class="modal-actions">
+                                <button type="submit" class="btn btn-primary">
+                                    Guardar
+                                </button>
+                                <button
+                                    type="button"
+                                    class="btn btn-ghost"
+                                    id="cancelEditBtn"
+                                >
+                                    Cancelar
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <style is:global>
+                    .admin-header-actions {
+                        display: flex;
+                        align-items: center;
+                        gap: var(--space-3);
+                        flex-wrap: wrap;
+                        margin-top: var(--space-3);
+                    }
+                    .mdx-editor {
+                        border: 1px solid var(--color-divider);
+                        background: var(--color-bg);
+                        overflow: hidden;
+                    }
+                    .mdx-content {
+                        min-height: 220px;
+                        padding: var(--space-3);
+                        overflow-wrap: break-word;
+                        word-break: break-word;
+                    }
+                    .mdx-editor [class*="_codeMirrorWrapper_"] {
+                        overflow: auto;
+                        max-width: 100%;
+                    }
+                    .mdxeditor-popup-container {
+                        z-index: 3000 !important;
+                    }
+                    [class*="_dialogOverlay_"] {
+                        z-index: 1000 !important;
+                    }
+                    [class*="_dialogContent_"],
+                    [class*="_largeDialogContent_"],
+                    [class*="_popoverContent_"],
+                    [class*="_toolbarButtonDropdownContainer_"],
+                    [class*="_toolbarNodeKindSelectContainer_"],
+                    [class*="_selectContainer_"],
+                    [class*="_toolbarCodeBlockLanguageSelectContent_"] {
+                        z-index: 1001 !important;
+                    }
+                    .admin-form textarea {
+                        border: 1px solid var(--color-divider);
+                        background: var(--color-surface);
+                        font-family: var(--font-body);
+                        min-height: 110px;
+                    }
+                    .btn-small {
+                        border: none;
+                        background: var(--color-bg);
+                    }
+                </style>
+
+                <script>
+                    // Purga del padrón: elimina las marcas de participación de
+                    // votaciones cerradas que han superado el plazo de
+                    // conservación. D1 no tiene caducidad automática, así que
+                    // esta operación suple la limpieza que sí ofrece KV.
+                    document
+                        .getElementById("purgePadronBtn")
+                        ?.addEventListener("click", async () => {
+                            const btn = document.getElementById(
+                                "purgePadronBtn",
+                            ) as HTMLButtonElement;
+                            const out =
+                                document.getElementById("purgePadronResult");
+                            btn.disabled = true;
+                            try {
+                                const res = await fetch(
+                                    "/api/admin/elecciones",
+                                    {
+                                        method: "POST",
+                                        headers: {
+                                            "Content-Type": "application/json",
+                                        },
+                                        body: JSON.stringify({
+                                            action: "purgar_padron",
+                                        }),
+                                    },
+                                );
+                                const data: any = await res.json();
+                                if (out) {
+                                    out.textContent = res.ok
+                                        ? `Se han purgado ${data.purgadas} marcas de participación.`
+                                        : data.error ||
+                                          "Error al purgar el padrón.";
+                                }
+                            } catch {
+                                if (out) {
+                                    out.textContent =
+                                        "Error de red al purgar el padrón.";
+                                }
+                            } finally {
+                                btn.disabled = false;
+                            }
+                        });
+
+                    document
+                        .getElementById("createElectionForm")
+                        ?.addEventListener("submit", async (e) => {
+                            e.preventDefault();
+                            const fd = new FormData(
+                                e.target as HTMLFormElement,
+                            );
+                            const payload = {
+                                titulo: fd.get("titulo"),
+                                descripcion: fd.get("descripcion"),
+                                censo_tipo: fd.get("censo_tipo"),
+                                ponderar_no_verificados:
+                                    fd.get("ponderar_no_verificados") === "1"
+                                        ? 1
+                                        : 0,
+                                opciones: String(fd.get("opciones") || "")
+                                    .split("\n")
+                                    .map((s) => s.trim())
+                                    .filter(Boolean),
+                                fecha_fin: fd.get("fecha_fin") || null,
+                            };
+                            const res = await fetch("/api/admin/elecciones", {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify(payload),
+                            });
+                            const data: any = await res.json();
+                            if (!res.ok) {
+                                alert(
+                                    data.error || "Error al crear la votación",
+                                );
+                                return;
+                            }
+                            window.location.href = "/";
+                        });
+
+                    document
+                        .querySelectorAll<HTMLButtonElement>(".btn-toggle-el")
+                        .forEach((btn) => {
+                            btn.addEventListener("click", async () => {
+                                const id = btn.getAttribute("data-id");
+                                const estado = btn.getAttribute("data-next");
+                                const res = await fetch(
+                                    "/api/admin/elecciones",
+                                    {
+                                        method: "POST",
+                                        headers: {
+                                            "Content-Type": "application/json",
+                                        },
+                                        body: JSON.stringify({
+                                            action: "toggle_estado",
+                                            id,
+                                            estado,
+                                        }),
+                                    },
+                                );
+                                if (res.ok) window.location.reload();
+                            });
+                        });
+
+                    document
+                        .querySelectorAll<HTMLButtonElement>(".btn-delete-el")
+                        .forEach((btn) => {
+                            btn.addEventListener("click", async () => {
+                                const id = btn.getAttribute("data-id");
+                                const titulo =
+                                    btn.getAttribute("data-titulo") || "";
+                                if (
+                                    !confirm(
+                                        `¿Eliminar la votación «${titulo}» y sus votos asociados? Esta acción no se puede deshacer.`,
+                                    )
+                                ) {
+                                    return;
+                                }
+                                const res = await fetch(
+                                    "/api/admin/elecciones",
+                                    {
+                                        method: "POST",
+                                        headers: {
+                                            "Content-Type": "application/json",
+                                        },
+                                        body: JSON.stringify({
+                                            action: "delete",
+                                            id,
+                                        }),
+                                    },
+                                );
+                                if (res.ok) {
+                                    window.location.reload();
+                                    return;
+                                }
+                                const err: any = await res
+                                    .json()
+                                    .catch(() => ({}));
+                                // El servidor exige una segunda confirmación
+                                // cuando la votación tiene papeletas depositadas:
+                                // el borrado destruye el historial electoral.
+                                if (err.requiere_confirmacion) {
+                                    const papeletas = Number(
+                                        err.papeletas || 0,
+                                    );
+                                    const ok = confirm(
+                                        `La votación «${titulo}» tiene ${papeletas} papeleta(s) depositadas.\n\nSi la eliminas, se destruye el historial electoral de forma irreversible y no queda registro en la urna.\n\n¿Confirmas el borrado?`,
+                                    );
+                                    if (!ok) return;
+                                    const res2 = await fetch(
+                                        "/api/admin/elecciones",
+                                        {
+                                            method: "POST",
+                                            headers: {
+                                                "Content-Type":
+                                                    "application/json",
+                                            },
+                                            body: JSON.stringify({
+                                                action: "delete",
+                                                id,
+                                                confirmar: true,
+                                            }),
+                                        },
+                                    );
+                                    if (res2.ok) {
+                                        window.location.reload();
+                                    } else {
+                                        const err2: any = await res2
+                                            .json()
+                                            .catch(() => ({}));
+                                        alert(
+                                            err2.error || "Error al eliminar",
+                                        );
+                                    }
+                                    return;
+                                }
+                                alert(err.error || "Error al eliminar");
+                            });
+                        });
+
+                    const editModal = document.getElementById("editModal");
+                    const closeEdit = () => {
+                        if (editModal) editModal.style.display = "none";
+                    };
+                    document
+                        .getElementById("closeEditModal")
+                        ?.addEventListener("click", closeEdit);
+                    document
+                        .getElementById("cancelEditBtn")
+                        ?.addEventListener("click", closeEdit);
+
+                    document
+                        .querySelectorAll<HTMLButtonElement>(".btn-edit-el")
+                        .forEach((btn) => {
+                            btn.addEventListener("click", () => {
+                                const item = btn.closest(
+                                    ".election-admin-item",
+                                ) as HTMLElement | null;
+                                if (!item || !editModal) return;
+                                (
+                                    document.getElementById(
+                                        "edit-id",
+                                    ) as HTMLInputElement
+                                ).value = item.dataset.id || "";
+                                (
+                                    document.getElementById(
+                                        "edit-titulo",
+                                    ) as HTMLInputElement
+                                ).value = item.dataset.titulo || "";
+                                (
+                                    document.getElementById(
+                                        "edit-censo",
+                                    ) as HTMLSelectElement
+                                ).value = item.dataset.censo || "solo_socios";
+                                (
+                                    document.getElementById(
+                                        "edit-ponderar",
+                                    ) as HTMLSelectElement
+                                ).value =
+                                    item.dataset.ponderar === "0" ? "0" : "1";
+                                const ed = (window as any).__mdEditors?.[
+                                    "edit-descripcion"
+                                ];
+                                if (ed) {
+                                    ed.setValue(item.dataset.descripcion || "");
+                                }
+                                editModal.style.display = "flex";
+                            });
+                        });
+
+                    document
+                        .getElementById("editElectionForm")
+                        ?.addEventListener("submit", async (e) => {
+                            e.preventDefault();
+                            const fd = new FormData(
+                                e.target as HTMLFormElement,
+                            );
+                            const res = await fetch("/api/admin/elecciones", {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({
+                                    action: "update_context",
+                                    id: fd.get("id"),
+                                    titulo: fd.get("titulo"),
+                                    censo_tipo: fd.get("censo_tipo"),
+                                    ponderar_no_verificados:
+                                        fd.get("ponderar_no_verificados") ===
+                                        "1"
+                                            ? 1
+                                            : 0,
+                                    descripcion: fd.get("descripcion"),
+                                }),
+                            });
+                            if (res.ok) {
+                                window.location.reload();
+                            } else {
+                                const err: any = await res
+                                    .json()
+                                    .catch(() => ({}));
+                                alert(err.error || "Error al guardar");
+                            }
+                        });
+                </script>
+            </>
+        )}
+    </main>
+</Default>

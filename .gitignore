@@ -1,0 +1,134 @@
+# ============================================================================
+# VotASO — .gitignore
+# Repo público: este fichero es la barrera entre el código auditable y los
+# secretos de quien despliega. Ante la duda, ignora; nunca subas secretos.
+# ============================================================================
+
+# --- Dependencias -----------------------------------------------------------
+# Sin barra final: en este repo `node_modules` es un symlink a un monorepo
+# hermano, y el patrón con barra no lo excluiría.
+node_modules
+.pnp/
+.yarn/*
+!.yarn/patches
+!.yarn/releases
+!.yarn/plugins
+!.yarn/versions
+!.yarn/sdks
+.bower-cache/
+
+# --- Builds y artefactos de Astro / Wrangler --------------------------------
+dist/
+.astro/
+.output/
+.vercel/
+.netlify/
+.wrangler/
+worker-configuration.d.ts
+*.tsbuildinfo
+
+# --- Secretos y variables de entorno ---------------------------------------
+# NUNCA subir estos ficheros. Usar `.dev.vars.example` como plantilla.
+.env
+.env.*
+!.env.example
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+secrets.json
+secrets.yaml
+secrets.yml
+
+# --- Cloudflare: backups y exportaciones de bases de datos -----------------
+*.sqlite
+*.sqlite3
+*.db
+*.dump
+*.sql.gz
+dumps/
+backup/
+backups/
+
+# --- Coverage y tests -------------------------------------------------------
+coverage/
+.nyc_output/
+*.lcov
+test-results/
+playwright-report/
+blob-report/
+.playwright/
+
+# --- Logs -------------------------------------------------------------------
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# --- Sistema operativo ------------------------------------------------------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# --- Editores ---------------------------------------------------------------
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.example.json
+.idea/
+*.swp
+*.swo
+*~
+.project
+.settings/
+.classpath
+.c9/
+*.launch
+.settings/
+
+# --- Herramientas de IA / agentes -------------------------------------------
+.aider*
+.cursor/
+.claude/
+.codeium/
+# Ficheros de contexto que los agentessolemos generar y que no pertenecen al repo
+AGENTS.local.md
+CLAUDE.local.md
+*.agent.md
+
+# --- Documentación generada locally / interna --------------------------------
+_site/
+public/api/
+docs/AUDITORIA.md
+
+# --- Temporal / Sistema de ficheros -----------------------------------------
+.tmp/
+.temp/
+tmp/
+.cache/
+.parcel-cache/
+.eslintcache
+.stylelintcache
+.prettiercache
+.terraform/
+*.tfstate
+*.tfstate.backup
+
+# --- Estos ficheros SÍ deben versionarse (descomentados a propósito) --------
+#!.dev.vars.example
+#!package-lock.json
+#!bun.lock
+#!schema.sql

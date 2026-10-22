@@ -1,0 +1,1086 @@
+---
+import Default from "../layouts/Default.astro";
+import { censusSociosDisponible, getBindings, getConfig } from "../lib/config";
+import { renderElectionMarkdown } from "../lib/markdown";
+import { resolveAuthenticatedVoter } from "../lib/session";
+import { listarElecciones } from "../lib/urna";
+
+const cfg = getConfig();
+const { URNA_D1 } = getBindings();
+const voter = await resolveAuthenticatedVoter(Astro.request, cfg);
+
+// 1) Las votaciones SOLO se muestran si se ha iniciado sesión.
+// 2) Si es para "solo_socios" y el usuario no es socio, NO aparece en su lista.
+// 3) Si el proveedor OAuth no distingue socios, el censo efectivo es
+//    "registrados" y ninguna votación se oculta por falta de condición de socio.
+let elecciones: any[] = [];
+
+if (voter) {
+    const eleccionesRaw = await listarElecciones(URNA_D1);
+    const nowMs = Date.now();
+    const puedeCensoSocios = censusSociosDisponible(
+        cfg,
+        voter.tieneClaimsDePertenencia,
+    );
+
+    elecciones = eleccionesRaw
+        .filter((el) => {
+            // Si la elección es de solo socios y el votante NO es socio, no aparece
+            if (
+                el.censo_tipo === "solo_socios" &&
+                !voter.esSocio &&
+                puedeCensoSocios
+            ) {
+                return false;
+            }
+            return true;
+        })
+        .map((el) => {
+            let opciones: string[] = [];
+            try {
+                opciones = JSON.parse(el.opciones_json);
+            } catch {
+                opciones = [];
+            }
+            const abierta =
+                el.estado === "abierta" &&
+                (!el.fecha_fin || Number(el.fecha_fin) >= nowMs);
+            const requiereSocio =
+                el.censo_tipo === "solo_socios" && puedeCensoSocios;
+            const descripcionHtml = renderElectionMarkdown(el.descripcion);
+            const pondera =
+                el.censo_tipo !== "solo_socios" &&
+                el.ponderar_no_verificados !== 0 &&
+                el.ponderar_no_verificados !== false;
+            return {
+                ...el,
+                opciones,
+                abierta,
+                requiereSocio,
+                pondera,
+                descripcionHtml,
+            };
+        });
+}
+---
+
+<Default title={`VotASO — ${cfg.orgShortName}`}>
+    <main class="page">
+        <div class="top-header">
+            <div class="title-block">
+                <h1 class="page-title" style="margin-bottom:0">
+                    VotASO
+                </h1>
+                {voter && (
+                    <p class="page-subtitle text-sm text-muted">
+                        Plataforma auditable de votaciones. No se asocian datos
+                        personales a tu voto.
+                    </p>
+                )}
+            </div>
+            {voter && (
+                <div class="top-links">
+                    {voter.isAdmin && (
+                        <a href="/admin" class="text-sm text-muted">
+                            ADMIN
+                        </a>
+                    )}
+                    <a href="/auth/logout" class="text-sm text-muted">
+                        SALIR
+                    </a>
+                </div>
+            )}
+        </div>
+
+        {!voter ? (
+            <section class="block">
+                <p
+                    class="text-muted"
+                    style="line-height:1.6;margin-bottom:var(--space-6)"
+                >
+                    Inicia sesión para acceder al centro de votación. Tu
+                    identidad únicamente se utiliza para comprobar tu derecho al
+                    voto y nunca se asocia a la papeleta depositada.
+                </p>
+                <a href="/auth/login" class="btn btn-primary">
+                    Iniciar sesión
+                </a>
+            </section>
+        ) : (
+            <>
+                <div class="user-bar">
+                    <span class="text-sm text-muted">
+                        {voter.email}
+                        {cfg.enableDoubleVerification && (
+                            <>
+                                {" · "}
+                                {voter.hasDoubleAccount
+                                    ? "Verificación única (2 cuentas)"
+                                    : "Verificación estándar (1 cuenta)"}
+                            </>
+                        )}
+                        {" · "}
+                        {voter.esSocio ? "Socio" : "Registrado"}
+                    </span>
+                    {cfg.enableDoubleVerification &&
+                        !voter.hasDoubleAccount && (
+                            <p class="double-hint">
+                                Actualmente dispones de verificación estándar (1
+                                cuenta vinculada). Puedes vincular ambas cuentas
+                                en{" "}
+                                <a
+                                    href={cfg.orgProfileUrl}
+                                    target="_blank"
+                                    rel="noopener"
+                                >
+                                    tu perfil
+                                </a>{" "}
+                                antes de votar para obtener verificación única.
+                                Una verificación única permite que tu voto sea
+                                más confiable y cuente más en el escrutinio
+                                final ya que nos aseguramos que no usas dos
+                                cuentas para votar.
+                            </p>
+                        )}
+                </div>
+
+                {elecciones.length === 0 ? (
+                    <p class="text-muted" style="padding:var(--space-8) 0">
+                        No hay votaciones disponibles para tu censo en este
+                        momento.
+                    </p>
+                ) : (
+                    <div class="elections-stack">
+                        {elecciones.map((el) => (
+                            <section
+                                class="election-item"
+                                id={`eleccion-${el.id}`}
+                                data-abierta={el.abierta ? "true" : "false"}
+                            >
+                                <div class="election-head">
+                                    <h2 class="election-title">{el.titulo}</h2>
+                                    <span
+                                        class={`note-type ${el.abierta ? "active" : "neutral"}`}
+                                    >
+                                        {el.abierta ? "Abierta" : "Cerrada"}
+                                    </span>
+                                </div>
+
+                                <p
+                                    class="text-sm text-muted"
+                                    style="margin-bottom:var(--space-4)"
+                                >
+                                    {el.requiereSocio
+                                        ? "Censo: solo socios"
+                                        : "Censo: toda la comunidad registrada"}
+                                </p>
+
+                                {el.descripcionHtml && (
+                                    <div
+                                        class="election-desc prose"
+                                        set:html={el.descripcionHtml}
+                                    />
+                                )}
+
+                                {el.abierta ? (
+                                    <div>
+                                        {cfg.enableDoubleVerification &&
+                                            !voter.hasDoubleAccount &&
+                                            el.pondera && (
+                                                <div
+                                                    class="vote-warning-banner"
+                                                    style="margin-bottom:var(--space-4);padding:var(--space-3);background:var(--color-surface);font-size:var(--text-sm);border-left:3px solid var(--verde);line-height:1.5"
+                                                >
+                                                    <strong>
+                                                        Aviso de ponderación de
+                                                        voto:
+                                                    </strong>{" "}
+                                                    Actualmente no tienes ambos
+                                                    correos vinculados (dispones
+                                                    de verificación estándar).
+                                                    Si votas ahora, tu voto
+                                                    contará la mitad (0.5 ptos).
+                                                    Por favor,{" "}
+                                                    <a
+                                                        href={cfg.orgProfileUrl}
+                                                        target="_blank"
+                                                        rel="noopener"
+                                                        style="text-decoration:underline;font-weight:500"
+                                                    >
+                                                        vincula ambas cuentas en
+                                                        tu perfil
+                                                    </a>{" "}
+                                                    antes de votar para que tu
+                                                    papeleta cuente al 100% como
+                                                    verificación única.
+                                                </div>
+                                            )}
+                                        <form
+                                            class="vote-form"
+                                            data-eleccion={el.id}
+                                            data-pondera={
+                                                el.pondera ? "true" : "false"
+                                            }
+                                        >
+                                            <div class="options-stack">
+                                                {el.opciones.map(
+                                                    (op: string) => (
+                                                        <label class="option-item">
+                                                            <input
+                                                                type="radio"
+                                                                name="opcionSeleccionada"
+                                                                value={op}
+                                                                required
+                                                            />
+                                                            <span>{op}</span>
+                                                        </label>
+                                                    ),
+                                                )}
+                                            </div>
+                                            <button
+                                                type="submit"
+                                                class="btn btn-primary"
+                                            >
+                                                Votar
+                                            </button>
+                                        </form>
+                                        <div
+                                            class="receipt-box"
+                                            id={`receipt-${el.id}`}
+                                            style="display:none"
+                                        />
+                                    </div>
+                                ) : (
+                                    /* Votación CERRADA: Gráfico circular de resultados y desglose doble vs normal */
+                                    <div
+                                        class="closed-results"
+                                        id={`closed-results-${el.id}`}
+                                    >
+                                        <h3
+                                            class="section-title"
+                                            style="margin-top:var(--space-4)"
+                                        >
+                                            Escrutinio final
+                                        </h3>
+
+                                        <div class="results-layout">
+                                            <div class="chart-wrapper">
+                                                <svg
+                                                    viewBox="0 0 42 42"
+                                                    class="donut-chart"
+                                                    id={`donut-${el.id}`}
+                                                >
+                                                    <circle
+                                                        class="donut-ring"
+                                                        cx="21"
+                                                        cy="21"
+                                                        r="15.91549430918954"
+                                                        fill="transparent"
+                                                        stroke="#f0f0f0"
+                                                        stroke-width="6"
+                                                    ></circle>
+                                                </svg>
+                                            </div>
+
+                                            <div
+                                                class="breakdown-list"
+                                                id={`breakdown-${el.id}`}
+                                            >
+                                                <span class="text-muted text-sm">
+                                                    Cargando resultados...
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Historial de papeletas anónimas de la urna con ID y fecha/hora */}
+                                <div class="ballots-history">
+                                    <details class="history-details">
+                                        <summary
+                                            class="text-sm text-muted history-summary"
+                                            data-eleccion={el.id}
+                                        >
+                                            Historial público de papeletas
+                                            anónimas (
+                                            <span id={`count-ballots-${el.id}`}>
+                                                ver urna
+                                            </span>
+                                            )
+                                        </summary>
+                                        <div
+                                            class="history-content"
+                                            id={`history-table-${el.id}`}
+                                        >
+                                            <p class="text-sm text-muted">
+                                                Cargando papeletas...
+                                            </p>
+                                        </div>
+                                    </details>
+                                </div>
+                            </section>
+                        ))}
+                    </div>
+                )}
+            </>
+        )}
+
+        <footer class="page-footer">
+            <details class="audit-details">
+                <summary class="text-sm text-muted" style="cursor:pointer">
+                    Verificar recibo criptográfico
+                </summary>
+                <div style="margin-top:var(--space-4)">
+                    <textarea
+                        id="receiptInput"
+                        class="audit-textarea"
+                        rows="3"
+                        placeholder='Pega aquí tu recibo JSON ({"ticket":"...", ...})'
+                    ></textarea>
+                    <div class="receipt-file-row">
+                        <label
+                            class="btn-small receipt-file-label"
+                            for="receiptFile"
+                        >
+                            Cargar recibo desde archivo
+                        </label>
+                        <input
+                            type="file"
+                            id="receiptFile"
+                            accept=".json,application/json,text/plain"
+                            class="receipt-file-input"
+                        />
+                        <span
+                            id="receiptFileName"
+                            class="text-xs text-muted"
+                        ></span>
+                    </div>
+                    <button
+                        type="button"
+                        id="verifyReceiptBtn"
+                        class="btn-small"
+                        style="margin-top:var(--space-2)"
+                    >
+                        Comprobar recibo
+                    </button>
+                    <div
+                        id="verifyResult"
+                        class="text-sm"
+                        style="margin-top:var(--space-3);display:none"
+                    ></div>
+                </div>
+            </details>
+
+            <div class="footer-meta text-sm text-muted">
+                <a
+                    href="/auditoria-publica?resumen=1"
+                    target="_blank"
+                    rel="noopener"
+                >
+                    Auditoría JSON
+                </a>
+                <span>·</span>
+                <a href={cfg.orgRepoUrl} target="_blank" rel="noopener">
+                    Código abierto
+                </a>
+                <span>·</span>
+                <a href={cfg.orgPrivacyUrl} target="_blank" rel="noopener">
+                    Privacidad
+                </a>
+            </div>
+
+            {/* Acceso a la urna pública. El enlace solo se muestra a miembros
+                del grupo; la página sigue siendo pública y auditable por URL
+                directa para cualquiera. */}
+            {voter?.esSocio && (
+                <div class="footer-audit">
+                    <a href="/urna" class="btn-small">
+                        Ver las papeletas de la urna
+                    </a>
+                    <span class="text-xs text-muted">
+                        Contenido íntegro y anónimo de los votos depositados.
+                    </span>
+                </div>
+            )}
+        </footer>
+    </main>
+
+    <div
+        id="votaso-config"
+        data-double={cfg.enableDoubleVerification ? "true" : "false"}
+        data-has-double={voter?.hasDoubleAccount ? "true" : "false"}
+        data-peso-ordinario={String(cfg.pesoVotoOrdinario)}
+        style="display:none"
+    ></div>
+
+    <style>
+        .top-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            margin-bottom: var(--space-8);
+            gap: var(--space-4);
+        }
+        .top-links {
+            display: flex;
+            gap: var(--space-4);
+        }
+        .title-block {
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-2);
+        }
+        .page-subtitle {
+            margin: 0;
+            line-height: 1.5;
+        }
+        .block {
+            margin-bottom: var(--space-8);
+        }
+        .user-bar {
+            background: var(--color-surface);
+            padding: var(--space-4);
+            margin-bottom: var(--space-8);
+        }
+        .double-hint {
+            margin-top: var(--space-2);
+            font-size: var(--text-xs);
+            color: var(--color-text-muted);
+            line-height: 1.5;
+        }
+        .double-hint a {
+            color: var(--color-text);
+            text-decoration: underline;
+        }
+        .elections-stack {
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-8);
+        }
+        .election-item {
+            padding-bottom: var(--space-8);
+            border-bottom: 1px solid var(--color-divider);
+        }
+        .election-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: var(--space-3);
+            margin-bottom: var(--space-2);
+        }
+        .election-title {
+            font-size: var(--text-lg);
+            font-weight: 500;
+        }
+        .election-desc {
+            background: var(--color-surface);
+            padding: var(--space-4);
+            margin-bottom: var(--space-5);
+            font-size: var(--text-sm);
+        }
+        .options-stack {
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-2);
+            margin-bottom: var(--space-4);
+        }
+        .option-item {
+            display: flex;
+            align-items: center;
+            gap: var(--space-3);
+            padding: 14px 16px;
+            background: var(--color-surface);
+            cursor: pointer;
+            transition: background var(--transition);
+        }
+        .option-item:hover {
+            background: var(--color-divider);
+        }
+        .option-item input[type="radio"] {
+            width: 18px;
+            height: 18px;
+            accent-color: var(--verde);
+            flex-shrink: 0;
+        }
+        .receipt-box {
+            background: var(--color-surface);
+            padding: var(--space-4);
+            margin-top: var(--space-4);
+            font-size: var(--text-sm);
+            line-height: 1.5;
+        }
+
+        /* Gráfico y Resultados de votaciones cerradas */
+        .closed-results {
+            margin-top: var(--space-4);
+        }
+        .results-layout {
+            display: flex;
+            gap: var(--space-6);
+            align-items: center;
+            margin-top: var(--space-4);
+            flex-wrap: wrap;
+        }
+        .chart-wrapper {
+            width: 160px;
+            height: 160px;
+            flex-shrink: 0;
+        }
+        .donut-chart {
+            width: 100%;
+            height: 100%;
+            transform: rotate(-90deg);
+        }
+        .breakdown-list {
+            flex: 1;
+            min-width: 240px;
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-3);
+        }
+        :global(.breakdown-item) {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--color-divider);
+        }
+        :global(.breakdown-item:last-child) {
+            border-bottom: none;
+        }
+        :global(.breakdown-header) {
+            display: flex;
+            justify-content: space-between;
+            font-size: var(--text-sm);
+            font-weight: 500;
+        }
+        :global(.breakdown-detail) {
+            font-size: var(--text-xs);
+            color: var(--color-text-muted);
+        }
+        :global(.legend-dot) {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 2px;
+            margin-right: 6px;
+            vertical-align: middle;
+        }
+
+        /* Historial anónimo de la urna */
+        .ballots-history {
+            margin-top: var(--space-6);
+            padding-top: var(--space-3);
+        }
+        .history-summary {
+            cursor: pointer;
+            user-select: none;
+        }
+        .history-content {
+            margin-top: var(--space-3);
+            max-height: 280px;
+            overflow-y: auto;
+            background: var(--color-surface);
+            padding: var(--space-3);
+            font-family: monospace;
+            font-size: var(--text-xs);
+        }
+        :global(.ballot-row) {
+            display: flex;
+            justify-content: space-between;
+            gap: var(--space-3);
+            padding: 6px 0;
+            border-bottom: 1px solid var(--color-divider);
+        }
+        :global(.ballot-row:last-child) {
+            border-bottom: none;
+        }
+        :global(.ballot-ticket) {
+            font-weight: 600;
+            color: var(--color-text);
+        }
+        :global(.ballot-meta) {
+            color: var(--color-text-muted);
+            white-space: nowrap;
+        }
+
+        .audit-details {
+            padding-top: var(--space-4);
+            border-top: 1px solid var(--color-divider);
+            margin-bottom: var(--space-4);
+        }
+        .audit-textarea {
+            width: 100%;
+            background: var(--color-surface);
+            border: none;
+            padding: var(--space-3);
+            font-family: monospace;
+            font-size: var(--text-xs);
+            outline: none;
+            resize: vertical;
+        }
+        .footer-meta {
+            display: flex;
+            gap: var(--space-3);
+            flex-wrap: wrap;
+        }
+        .footer-audit {
+            display: flex;
+            align-items: center;
+            gap: var(--space-3);
+            flex-wrap: wrap;
+            margin-top: var(--space-4);
+        }
+        .receipt-file-row {
+            display: flex;
+            align-items: center;
+            gap: var(--space-3);
+            flex-wrap: wrap;
+            margin-top: var(--space-3);
+        }
+        .receipt-file-label {
+            cursor: pointer;
+            display: inline-block;
+        }
+        .receipt-file-input {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border: 0;
+        }
+    </style>
+
+    <script>
+        const ENABLE_DOUBLE_VERIFICATION =
+            document
+                .getElementById("votaso-config")
+                ?.getAttribute("data-double") === "true";
+
+        const HAS_DOUBLE_ACCOUNT =
+            document
+                .getElementById("votaso-config")
+                ?.getAttribute("data-has-double") === "true";
+
+        // Peso que aplica a los votos sin verificación doble. En las votaciones
+        // con censo de socios no se pondera (el censo ya está acotado).
+        const PESO_ORDINARIO = Number(
+            document
+                .getElementById("votaso-config")
+                ?.getAttribute("data-peso-ordinario") || "0.5",
+        );
+
+        const CHART_COLORS = [
+            "#36e452", // Verde principal
+            "#3cadff", // Azul
+            "#bacefb", // Lila
+            "#fe3d46", // Rojo
+            "#f59e0b", // Ámbar
+            "#10b981", // Esmeralda
+            "#8b5cf6", // Violeta
+            "#ec4899", // Rosa
+        ];
+
+        function esc(s: unknown): string {
+            return String(s ?? "")
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;");
+        }
+
+        function formatTime(ts: number): string {
+            if (!ts) return "";
+            const d = new Date(ts);
+            return (
+                d.toLocaleDateString("es-ES", {
+                    day: "2-digit",
+                    month: "2-digit",
+                    year: "numeric",
+                }) +
+                " " +
+                d.toLocaleTimeString("es-ES", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    second: "2-digit",
+                })
+            );
+        }
+
+        // Carga el escrutinio y dibuja el gráfico circular (SVG donut) para votaciones cerradas
+        async function loadClosedResults(eleccionId: string) {
+            const breakdownEl = document.getElementById(
+                `breakdown-${eleccionId}`,
+            );
+            const donutEl = document.getElementById(`donut-${eleccionId}`);
+            if (!breakdownEl || !donutEl) return;
+
+            try {
+                const res = await fetch(
+                    `/auditoria-publica?eleccion_id=${encodeURIComponent(eleccionId)}&resumen=1`,
+                );
+                const data: any = await res.json();
+                const escrutinio = data.escrutinio || {};
+                const entries = Object.entries(escrutinio) as [
+                    string,
+                    {
+                        total: number;
+                        muy_fiable: number;
+                        ordinario: number;
+                        puntos?: number;
+                    },
+                ][];
+
+                const totalVotes = entries.reduce(
+                    (acc, [, val]) => acc + (val.total || 0),
+                    0,
+                );
+                // El valor electoral se mide en puntos. Si el backend no los
+                // publica (censo de socios, donde no se pondera), se usan las
+                // papeletas como equivalente 1:1.
+                const totalPoints = entries.reduce(
+                    (acc, [, val]) =>
+                        acc +
+                        (typeof val.puntos === "number"
+                            ? val.puntos
+                            : val.total || 0),
+                    0,
+                );
+                const ponderado = entries.some(
+                    ([, val]) => typeof val.puntos === "number",
+                );
+
+                if (totalVotes === 0) {
+                    breakdownEl.innerHTML =
+                        '<span class="text-muted text-sm">No se emitieron votos en este proceso.</span>';
+                    return;
+                }
+
+                let strokeOffset = 0;
+                let svgSegments = "";
+                let listHtml = "";
+
+                entries.forEach(([opcion, counts], idx) => {
+                    const color = CHART_COLORS[idx % CHART_COLORS.length];
+                    const puntos =
+                        typeof counts.puntos === "number"
+                            ? counts.puntos
+                            : counts.total || 0;
+                    const pct =
+                        totalPoints > 0 ? (puntos / totalPoints) * 100 : 0;
+                    const strokeDash = `${pct} ${100 - pct}`;
+
+                    // Segmento de circunferencia (r=15.9155 tiene perímetro exactamente 100)
+                    svgSegments += `<circle class="donut-segment" cx="21" cy="21" r="15.91549430918954" fill="transparent" stroke="${color}" stroke-width="6" stroke-dasharray="${strokeDash}" stroke-dashoffset="${strokeOffset}"></circle>`;
+                    strokeOffset -= pct;
+
+                    const breakdownTxt = ENABLE_DOUBLE_VERIFICATION
+                        ? `${counts.muy_fiable} verificación única · ${counts.ordinario} verificación estándar`
+                        : `${counts.total} voto(s)`;
+
+                    // El titular muestra el valor electoral; el detalle, las papeletas.
+                    const titular = ponderado
+                        ? `${puntos} ${puntos === 1 ? "punto" : "puntos"} (${pct.toFixed(1)}%)`
+                        : `${counts.total} (${pct.toFixed(1)}%)`;
+                    const detalle = ponderado
+                        ? `${breakdownTxt} · ${counts.total} papeleta${
+                              counts.total === 1 ? "" : "s"
+                          }`
+                        : breakdownTxt;
+
+                    listHtml += `
+            <div class="breakdown-item">
+              <div class="breakdown-header">
+                <span><span class="legend-dot" style="background:${color}"></span>${esc(opcion)}</span>
+                <strong>${titular}</strong>
+              </div>
+              <div class="breakdown-detail">
+                ${detalle}
+              </div>
+            </div>
+          `;
+                });
+
+                donutEl.innerHTML = `
+          <circle class="donut-ring" cx="21" cy="21" r="15.91549430918954" fill="transparent" stroke="#f0f0f0" stroke-width="6"></circle>
+          ${svgSegments}
+        `;
+                breakdownEl.innerHTML = listHtml;
+            } catch {
+                breakdownEl.innerHTML =
+                    '<span class="text-muted text-sm">Error al cargar los resultados.</span>';
+            }
+        }
+
+        // Carga el historial de votos anónimos con ticket_verificacion, opción y fecha/hora
+        async function loadBallotsHistory(eleccionId: string) {
+            const container = document.getElementById(
+                `history-table-${eleccionId}`,
+            );
+            const countEl = document.getElementById(
+                `count-ballots-${eleccionId}`,
+            );
+            if (!container) return;
+
+            try {
+                const res = await fetch(
+                    `/auditoria-publica?eleccion_id=${encodeURIComponent(eleccionId)}`,
+                );
+                const rows: any[] = await res.json();
+
+                if (countEl) {
+                    countEl.textContent = `${rows.length} papeletas`;
+                }
+
+                if (!Array.isArray(rows) || rows.length === 0) {
+                    container.innerHTML =
+                        '<p class="text-sm text-muted">Aún no hay papeletas en esta urna.</p>';
+                    return;
+                }
+
+                container.innerHTML = rows
+                    .map((r) => {
+                        const fiabLabel = ENABLE_DOUBLE_VERIFICATION
+                            ? r.fiabilidad === "muy_fiable"
+                                ? "verificación única"
+                                : "verificación estándar"
+                            : "";
+                        return `
+              <div class="ballot-row">
+                <div>
+                  <span class="ballot-ticket">Ticket: ${esc(r.ticket_verificacion)}</span>
+                  <span style="color:var(--color-text)"> · ${esc(r.opcion)}</span>
+                  ${fiabLabel ? `<span class="ballot-meta"> (${fiabLabel})</span>` : ""}
+                </div>
+                <div class="ballot-meta">${formatTime(r.timestamp)}</div>
+              </div>
+            `;
+                    })
+                    .join("");
+            } catch {
+                container.innerHTML =
+                    '<p class="text-sm text-muted">Error al obtener las papeletas.</p>';
+            }
+        }
+
+        // Inicializar secciones para cada votación
+        document
+            .querySelectorAll<HTMLElement>(".election-item")
+            .forEach((item) => {
+                const eleccionId = item.id.replace("eleccion-", "");
+                const isAbierta = item.dataset.abierta === "true";
+
+                // Si está cerrada, cargar inmediatamente el gráfico circular y desglose
+                if (!isAbierta) {
+                    loadClosedResults(eleccionId);
+                }
+
+                // Cargar resumen de papeletas
+                const summary =
+                    item.querySelector<HTMLElement>(".history-summary");
+                summary?.addEventListener("click", () => {
+                    loadBallotsHistory(eleccionId);
+                });
+            });
+
+        // Envío del voto
+        document
+            .querySelectorAll<HTMLFormElement>(".vote-form")
+            .forEach((form) => {
+                const eleccionId = form.getAttribute("data-eleccion");
+
+                form.addEventListener("submit", async (e) => {
+                    e.preventDefault();
+                    const fd = new FormData(form);
+                    const opcionSeleccionada = fd.get("opcionSeleccionada");
+                    if (!opcionSeleccionada) return;
+                    const isPonderada =
+                        form.getAttribute("data-pondera") === "true";
+                    let confirmMsg = `¿Confirmas tu voto por «${opcionSeleccionada}»?`;
+                    if (
+                        ENABLE_DOUBLE_VERIFICATION &&
+                        !HAS_DOUBLE_ACCOUNT &&
+                        isPonderada
+                    ) {
+                        confirmMsg = `Aviso: Actualmente no tienes vinculados ambos correos (verificación estándar). Tu voto contará la mitad (${PESO_ORDINARIO} ptos).\n\n¿Deseas confirmar tu voto por «${opcionSeleccionada}» ahora, o prefieres vincular tu segunda cuenta primero?`;
+                    }
+                    if (!confirm(confirmMsg)) return;
+
+                    const btn = form.querySelector<HTMLButtonElement>(
+                        "button[type='submit']",
+                    )!;
+                    btn.disabled = true;
+                    btn.textContent = "Enviando...";
+
+                    try {
+                        const res = await fetch("/votar", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                                eleccionId,
+                                opcionSeleccionada,
+                            }),
+                        });
+                        const result: any = await res.json();
+                        const box = document.getElementById(
+                            "receipt-" + eleccionId,
+                        )!;
+                        box.style.display = "block";
+                        if (!res.ok) {
+                            box.innerHTML = `<span style="color:var(--rojo)">${esc(result.error || "Error")}</span>`;
+                            btn.disabled = false;
+                            btn.textContent = "Votar";
+                            return;
+                        }
+                        form.style.display = "none";
+                        box.innerHTML =
+                            `<p><strong>Voto registrado anónimamente.</strong> Tu ID de verificación: <code>${esc(result.ticket)}</code></p>` +
+                            `<p class="text-sm text-muted">Se ha descargado automáticamente tu recibo en formato JSON. Guárdalo: con él puedes comprobar que tu voto está en la urna.</p>` +
+                            `<details style="margin-top:8px"><summary style="cursor:pointer;font-size:12px" class="text-muted">Ver recibo JSON completo</summary>` +
+                            `<pre style="margin-top:8px;font-size:11px;overflow-x:auto">${esc(JSON.stringify(result, null, 2))}</pre></details>`;
+
+                        // Descarga automática del recibo en un archivo JSON, para que
+                        // el elector pueda guardarlo y verificarlo más tarde.
+                        descargarRecibo(result);
+
+                        if (eleccionId) {
+                            loadBallotsHistory(eleccionId);
+                        }
+                    } catch {
+                        alert("Error de red al enviar el voto.");
+                        btn.disabled = false;
+                        btn.textContent = "Votar";
+                    }
+                });
+            });
+
+        // Descarga el recibo de voto como archivo JSON.
+        //
+        // El formato JSON es el canónico: es el mismo que acepta el verificador
+        // de recibos, de modo que el elector puede guardarlo, reutilizarlo y
+        // auditarlo con cualquier herramienta.
+        function descargarRecibo(recibo: any) {
+            try {
+                const contenido = JSON.stringify(recibo, null, 2);
+                const blob = new Blob([contenido], {
+                    type: "application/json;charset=utf-8",
+                });
+                const url = URL.createObjectURL(blob);
+                const ticket = String(recibo?.ticket || "voto").replace(
+                    /[^a-zA-Z0-9_-]/g,
+                    "",
+                );
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `recibo-votaso-${ticket}.json`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                // Se libera la URL en el siguiente ciclo para no cancelar la descarga.
+                setTimeout(() => URL.revokeObjectURL(url), 1000);
+            } catch {
+                // Si el navegador bloquea la descarga, el recibo sigue visible
+                // en pantalla y se puede copiar a mano.
+            }
+        }
+
+        // Carga un archivo de recibo (JSON) en el verificador.
+        async function cargarReciboDesdeArchivo(file: File) {
+            const texto = await file.text();
+            const input = document.getElementById(
+                "receiptInput",
+            ) as HTMLTextAreaElement;
+            if (!input) return;
+            // Se normaliza: si el fichero trae JSON con texto adicional, se
+            // extrae el primer objeto JSON válido que contenga.
+            const recortado = recortarPrimerObjetoJson(texto) ?? texto.trim();
+            input.value = recortado;
+            input.dispatchEvent(new Event("input"));
+        }
+
+        // Extrae el primer objeto JSON balanceado del texto. Devuelve null si
+        // no hay ninguno.
+        function recortarPrimerObjetoJson(texto: string): string | null {
+            const inicio = texto.indexOf("{");
+            if (inicio < 0) return null;
+            let nivel = 0;
+            let enCadena = false;
+            let escapado = false;
+            for (let i = inicio; i < texto.length; i++) {
+                const c = texto[i];
+                if (enCadena) {
+                    if (escapado) escapado = false;
+                    else if (c === "\\") escapado = true;
+                    else if (c === '"') enCadena = false;
+                    continue;
+                }
+                if (c === '"') enCadena = true;
+                else if (c === "{") nivel++;
+                else if (c === "}") {
+                    nivel--;
+                    if (nivel === 0) return texto.slice(inicio, i + 1);
+                }
+            }
+            return null;
+        }
+
+        // Verificador de recibo JSON
+        async function verificarRecibo() {
+            const raw = (
+                document.getElementById("receiptInput") as HTMLTextAreaElement
+            ).value.trim();
+            const out = document.getElementById("verifyResult")!;
+            out.style.display = "block";
+            if (!raw) {
+                out.innerHTML = `<span style="color:var(--rojo)">Pega un recibo o carga un archivo.</span>`;
+                return;
+            }
+            try {
+                const parsed = JSON.parse(raw);
+                const res = await fetch("/api/verificar-recibo", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(parsed),
+                });
+                const data: any = await res.json();
+                if (data.valido_criptograficamente && data.presente_en_urna) {
+                    out.innerHTML = `Recibo válido y presente en la urna (${esc(data.registro_urna.opcion)}).`;
+                } else {
+                    out.innerHTML = `<span style="color:var(--rojo)">Recibo no válido o no encontrado en la urna.</span>`;
+                }
+            } catch {
+                out.innerHTML = `<span style="color:var(--rojo)">JSON no válido.</span>`;
+            }
+        }
+
+        document
+            .getElementById("verifyReceiptBtn")
+            ?.addEventListener("click", verificarRecibo);
+
+        // Carga de un recibo desde archivo: al elegirlo, se rellena el campo y
+        // se verifica automáticamente.
+        document
+            .getElementById("receiptFile")
+            ?.addEventListener("change", async (e) => {
+                const input = e.target as HTMLInputElement;
+                const file = input.files?.[0];
+                const nombre = document.getElementById("receiptFileName");
+                if (!file) return;
+                if (nombre) {
+                    nombre.textContent = file.name;
+                }
+                try {
+                    await cargarReciboDesdeArchivo(file);
+                    await verificarRecibo();
+                } catch {
+                    const out = document.getElementById("verifyResult")!;
+                    out.style.display = "block";
+                    out.innerHTML = `<span style="color:var(--rojo)">No se pudo leer el archivo.</span>`;
+                }
+            });
+    </script>
+</Default>

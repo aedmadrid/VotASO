@@ -1,0 +1,28 @@
+# Variables locales de desarrollo para Cloudflare Workers / Astro (NO SUBIR A GIT)
+# Copia este archivo a `.dev.vars` para probar en local con `npm run dev`
+#
+# Los valores de abajo son EJEMPLOS: sustitúyelos por los tuyos.
+# Este fichero se versiona a propósito (.dev.vars.example) para que sirva de
+# plantilla; el `.dev.vars` real está en .gitignore.
+
+# --- Credenciales del proveedor OAuth 2.0 -----------------------------------
+OAUTH_CLIENT_ID="client_id_de_tu_proveedor_oauth"
+OAUTH_CLIENT_SECRET="client_secret_de_tu_proveedor_oauth"
+
+# --- Semilla criptográfica ---------------------------------------------------
+# Genera una aleatoria de al menos 32 bytes. En producción, defínela como
+# secreto de Wrangler:  npx wrangler secret put SECRET_SALT
+# Si se filtra, un atacante podría firmar sesiones y recibos falsos.
+SECRET_SALT="pega_aqui_una_cadena_aleatoria_de_al_menos_64_caracteres_hex"
+
+# --- Administración -----------------------------------------------------------
+# Correos separados por comas. Los que estén aquí pueden acceder a /admin.
+ADMIN_EMAILS="tu.correo@tu-organizacion.example"
+
+# --- Autenticación por cabeceras (opcional, desactivada por defecto) ---------
+# Solo actívala si el Worker está detrás de Cloudflare Access u otro proxy
+# que inyecte `X-User-Email`. Con el Worker accesible públicamente, permitirlo
+# permitiría suplantar a cualquier votante, incluidos los administradores.
+# TRUST_IDENTITY_HEADERS="true"
+# Secreto adicional que el proxy debe enviar en `X-Identity-Secret`.
+# IDENTITY_HEADERS_SECRET="otro_secreto_aleatorio"

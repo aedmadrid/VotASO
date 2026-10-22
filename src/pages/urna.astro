@@ -1,0 +1,232 @@
+---
+/**
+ * urna.astro — Vista pública del contenido de la urna (auditoría).
+ *
+ * Esta página es deliberadamente PÚBLICA y accesible por URL directa: la
+ * transparencia de la urna es una garantía del sistema, no un privilegio.
+ * Lo que se restringe es únicamente la *visibilidad del enlace* en la interfaz
+ * (ver `index.astro`), no el acceso a los datos.
+ */
+import Default from "../layouts/Default.astro";
+import { getBindings, getConfig } from "../lib/config";
+import { auditarUrna, listarElecciones } from "../lib/urna";
+
+const cfg = getConfig();
+const { URNA_D1 } = getBindings();
+
+const eleccionId = Astro.url.searchParams.get("eleccion_id");
+const [{ rows, resumen }, elecciones] = await Promise.all([
+    auditarUrna({ URNA_D1, cfg, eleccionId }),
+    listarElecciones(URNA_D1),
+]);
+
+const titulos = new Map<string, string>();
+for (const el of elecciones) {
+    titulos.set(el.id, el.titulo);
+}
+
+const verificacion = resumen.verificacion_blockchain;
+const cadenaIntegra = verificacion.cadena_integra;
+
+// Agrupa las papeletas por votación, conservando el orden de la urna.
+const porEleccion = new Map<string, any[]>();
+for (const fila of rows) {
+    const id = fila.eleccion_id || "general";
+    if (!porEleccion.has(id)) porEleccion.set(id, []);
+    porEleccion.get(id)!.push(fila);
+}
+
+const formatoFecha = (ts: number) =>
+    new Date(ts).toLocaleString("es-ES", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+    });
+---
+
+<Default title={`Urna pública — ${cfg.orgShortName}`}>
+    <main class="page">
+        <a href="/" class="back-link text-sm text-muted">
+            ← Volver
+        </a>
+
+        <div class="top-header">
+            <div class="title-block">
+                <h1 class="page-title" style="margin-bottom:0">
+                    Urna pública
+                </h1>
+                <p class="page-subtitle text-sm text-muted">
+                    Contenido íntegro de la urna. Cada papeleta es anónima y
+                    encadenada criptográficamente: no contiene datos personales.
+                </p>
+            </div>
+        </div>
+
+        <section class="block">
+            <div class="urn-summary">
+                <div class="urn-metric">
+                    <span class="urn-metric-value">
+                        {verificacion.total_papeletas}
+                    </span>
+                    <span class="urn-metric-label">papeletas depositadas</span>
+                </div>
+                <div class="urn-metric">
+                    <span class="urn-metric-value">
+                        {cadenaIntegra ? "Íntegra" : "Alterada"}
+                    </span>
+                    <span class="urn-metric-label">cadena de bloques</span>
+                </div>
+                {cfg.enableDoubleVerification && (
+                    <div class="urn-metric">
+                        <span class="urn-metric-value">
+                            {verificacion.votos_muy_fiables_doble_cuenta ?? 0}
+                        </span>
+                        <span class="urn-metric-label">votos muy fiables</span>
+                    </div>
+                )}
+                {cfg.enableDoubleVerification && (
+                    <div class="urn-metric">
+                        <span class="urn-metric-value">
+                            {verificacion.votos_ordinarios_una_cuenta ?? 0}
+                        </span>
+                        <span class="urn-metric-label">votos ordinarios</span>
+                    </div>
+                )}
+            </div>
+
+            <p class="text-sm text-muted" style="margin-top:var(--space-4)">
+                {cadenaIntegra
+                    ? "La cadena de bloques se ha verificado de principio a fin: ningún voto ha sido alterado ni eliminado."
+                    : "Aviso: la verificación de la cadena de bloques ha detectado una inconsistencia. Consulta el detalle en la auditoría JSON."}
+            </p>
+
+            <p class="text-sm text-muted">
+                <a
+                    href="/auditoria-publica?resumen=1"
+                    target="_blank"
+                    rel="noopener"
+                >
+                    Ver el informe de auditoría en JSON
+                </a>
+            </p>
+        </section>
+
+        {porEleccion.size === 0 ? (
+            <p class="text-muted" style="padding:var(--space-8) 0">
+                Todavía no se ha depositado ninguna papeleta.
+            </p>
+        ) : (
+            Array.from(porEleccion.entries()).map(([id, papeletas]) => (
+                <section class="block">
+                    <h2 class="section-title">{titulos.get(id) || id}</h2>
+                    <p
+                        class="text-sm text-muted"
+                        style="margin-bottom:var(--space-4)"
+                    >
+                        {papeletas.length} papeleta
+                        {papeletas.length === 1 ? "" : "s"}
+                    </p>
+
+                    <div class="urn-list">
+                        {papeletas.map((p) => (
+                            <div class="urn-row">
+                                <div>
+                                    <span class="urn-ticket">
+                                        Ticket: {p.ticket_verificacion}
+                                    </span>
+                                    <span class="urn-option">
+                                        {" "}
+                                        · {p.opcion}
+                                    </span>
+                                    {cfg.enableDoubleVerification && (
+                                        <span class="urn-meta">
+                                            {" ("}
+                                            {p.fiabilidad === "muy_fiable"
+                                                ? "verificación única"
+                                                : "verificación estándar"}
+                                            {")"}
+                                        </span>
+                                    )}
+                                </div>
+                                <div class="urn-meta">
+                                    {formatoFecha(p.timestamp)}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </section>
+            ))
+        )}
+    </main>
+
+    <style>
+        .page-subtitle {
+            margin: 0;
+            line-height: 1.5;
+        }
+        .title-block {
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-2);
+        }
+        .top-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            margin-bottom: var(--space-8);
+            gap: var(--space-4);
+        }
+        .block {
+            margin-bottom: var(--space-8);
+        }
+        .urn-summary {
+            display: flex;
+            flex-wrap: wrap;
+            gap: var(--space-8);
+            background: var(--color-surface);
+            padding: var(--space-4);
+        }
+        .urn-metric {
+            display: flex;
+            flex-direction: column;
+            gap: var(--space-2);
+        }
+        .urn-metric-value {
+            font-size: var(--text-2xl);
+            line-height: 1;
+        }
+        .urn-metric-label {
+            font-size: var(--text-xs);
+            color: var(--color-text-muted);
+        }
+        .urn-list {
+            display: flex;
+            flex-direction: column;
+            border-top: 1px solid var(--color-border);
+        }
+        .urn-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            gap: var(--space-4);
+            padding: var(--space-3) 0;
+            border-bottom: 1px solid var(--color-divider);
+            font-size: var(--text-sm);
+        }
+        .urn-ticket {
+            font-family: monospace;
+            font-size: var(--text-xs);
+            color: var(--color-text-muted);
+        }
+        .urn-option {
+            color: var(--color-text);
+        }
+        .urn-meta {
+            font-size: var(--text-xs);
+            color: var(--color-text-muted);
+        }
+    </style>
+</Default>
