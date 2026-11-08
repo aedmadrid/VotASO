@@ -18,9 +18,11 @@ export const GET: APIRoute = async ({ url }) => {
       const userRes = await fetch(cfg.oauthUserinfoUrl, {
         headers: { Authorization: ["Bearer", appToken].join(" "), Accept: "application/json" },
       });
+      console.log(`[app_token] userinfo status=${userRes.status}`);
       if (userRes.ok) {
         const rawUserInfo: Record<string, any> = await userRes.json();
         const voter = normalizeVoterIdentity(rawUserInfo, cfg);
+        console.log(`[app_token] voter sub=${!!voter.sub} email=${!!voter.email}`);
         if (voter.sub || voter.email) {
           const sessionToken = await createSignedToken({ voter }, cfg.secretSalt, 7200);
           const isSecure = url.protocol === "https:";
