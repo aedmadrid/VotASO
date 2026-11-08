@@ -1,11 +1,42 @@
 import type { APIRoute } from "astro";
-import { getConfig } from "../../lib/config";
+import { getConfig, normalizeVoterIdentity } from "../../lib/config";
 import { base64UrlEncode, pkceChallengeS256 } from "../../lib/crypto";
-import { createSignedToken, isSafeInternalPath, nombreCookieEstado } from "../../lib/session";
+import { createSignedToken, isSafeInternalPath, nombreCookieEstado, nombreCookieSesion } from "../../lib/session";
 
 export const GET: APIRoute = async ({ url }) => {
   const cfg = getConfig();
   const nextPath = url.searchParams.get("next") || "/";
+
+  // Entrada directa desde la ASO.app: ?app_token=<access_token OAuth>.
+  // La app ya autenticó al usuario con VerificASO; validamos el token contra
+  // userinfo (lado servidor) y creamos sesión sin pasar por el navegador
+  // (Google bloquea webviews y la pantalla se quedaba tiesa).
+  const appToken = url.searchParams.get("app_token") || "";
+  if (appToken) {
+    const safeDest = isSafeInternalPath(nextPath) ? nextPath : "/";
+    try {
+      const userRes = await fetch(cfg.oauthUserinfoUrl, {
+        headers: { Authorization: ["Bearer", appToken].join(" "), Accept: "application/json" },
+      });
+      if (userRes.ok) {
+        const rawUserInfo: Record<string, any> = await userRes.json();
+        const voter = normalizeVoterIdentity(rawUserInfo, cfg);
+        if (voter.sub || voter.email) {
+          const sessionToken = await createSignedToken({ voter }, cfg.secretSalt, 7200);
+          const isSecure = url.protocol === "https:";
+          const headers = new Headers();
+          headers.set("Location", safeDest);
+          headers.append(
+            "Set-Cookie",
+            `${nombreCookieSesion(isSecure)}=${encodeURIComponent(sessionToken)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=7200${isSecure ? "; Secure" : ""}`,
+          );
+          return new Response(null, { status: 302, headers });
+        }
+      }
+    } catch {
+      // Cae al flujo OAuth normal de abajo.
+    }
+  }
   // Solo se admiten rutas internas. Un valor como `//evil.com` o `https://evil.com`
   // es un redirect abierto: el navegador lo interpretaría como URL absoluta.
   const safeNext = isSafeInternalPath(nextPath) ? nextPath : "/";
