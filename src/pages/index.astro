@@ -7,6 +7,19 @@ import { listarElecciones } from "../lib/urna";
 
 const cfg = getConfig();
 const { URNA_D1 } = getBindings();
+
+// Entrada desde la ASO.app (?app_token=): reenviar al login para que cree
+// sesión con el token antes de renderizar (si no, se pierde y cae a Google).
+const appTokenEntrante = Astro.url.searchParams.get("app_token") || "";
+if (appTokenEntrante) {
+    const yaAutenticado = await resolveAuthenticatedVoter(Astro.request, cfg);
+    if (!yaAutenticado) {
+        return Astro.redirect(
+            `/auth/login?app_token=${encodeURIComponent(appTokenEntrante)}&next=${encodeURIComponent(Astro.url.pathname)}`,
+        );
+    }
+}
+
 const voter = await resolveAuthenticatedVoter(Astro.request, cfg);
 
 // 1) Las votaciones SOLO se muestran si se ha iniciado sesión.
