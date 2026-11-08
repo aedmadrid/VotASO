@@ -1,7 +1,21 @@
 import type { APIRoute } from "astro";
-import { getConfig, normalizeVoterIdentity } from "../../lib/config";
+import { getConfig, normalizeVoterIdentity, resolveRawEnv } from "../../lib/config";
 import { base64UrlEncode, pkceChallengeS256 } from "../../lib/crypto";
 import { createSignedToken, isSafeInternalPath, nombreCookieEstado, nombreCookieSesion } from "../../lib/session";
+
+// Como en callback.ts: Worker-a-Worker vía binding (evita el bloqueo 522).
+async function oauthFetch(url: string, init: RequestInit): Promise<Response> {
+  const env = resolveRawEnv();
+  const svc = env.OAUTH_SERVICE as { fetch: typeof fetch } | undefined;
+  if (svc && typeof svc.fetch === "function") {
+    try {
+      return await svc.fetch(new Request(url, init));
+    } catch {
+      // Fallback a fetch estándar
+    }
+  }
+  return fetch(url, init);
+}
 
 export const GET: APIRoute = async ({ url }) => {
   const cfg = getConfig();
@@ -15,7 +29,7 @@ export const GET: APIRoute = async ({ url }) => {
   if (appToken) {
     const safeDest = isSafeInternalPath(nextPath) ? nextPath : "/";
     try {
-      const userRes = await fetch(cfg.oauthUserinfoUrl, {
+      const userRes = await oauthFetch(cfg.oauthUserinfoUrl, {
         headers: { Authorization: ["Bearer", appToken].join(" "), Accept: "application/json" },
       });
       console.log(`[app_token] userinfo status=${userRes.status}`);
