@@ -1,12 +1,13 @@
 ---
 import Default from "../layouts/Default.astro";
 import { censusSociosDisponible, getBindings, getConfig } from "../lib/config";
+import { buildPadronKey } from "../lib/crypto";
 import { renderElectionMarkdown } from "../lib/markdown";
 import { resolveAuthenticatedVoter } from "../lib/session";
 import { listarElecciones } from "../lib/urna";
 
 const cfg = getConfig();
-const { URNA_D1 } = getBindings();
+const { URNA_D1, PADRON_KV } = getBindings();
 
 // Entrada desde la ASO.app (?app_token=): reenviar al login para que cree
 // sesión con el token antes de renderizar (si no, se pierde y cae a Google).
@@ -74,6 +75,23 @@ if (voter) {
                 descripcionHtml,
             };
         });
+
+    // Marca las votaciones donde este elector ya participó (no se le
+    // ofrece el formulario: vería el error "ya registrado" al votar).
+    const uniqueVoterId = voter.sub || voter.email || "";
+    const yaVotado: Record<string, boolean> = {};
+    if (uniqueVoterId) {
+        await Promise.all(
+            elecciones.map(async (el) => {
+                try {
+                    const key = await buildPadronKey(el.id, uniqueVoterId, cfg.secretSalt);
+                    yaVotado[el.id] = (await PADRON_KV.get(key)) !== null;
+                } catch {
+                    yaVotado[el.id] = false;
+                }
+            }),
+        );
+    }
 }
 ---
 
@@ -196,6 +214,19 @@ if (voter) {
                                 )}
 
                                 {el.abierta ? (
+                                    yaVotado[el.id] ? (
+                                        <div
+                                            class="vote-warning-banner"
+                                            style="margin-bottom:var(--space-4);padding:var(--space-3);background:var(--color-surface);font-size:var(--text-sm);border-left:3px solid var(--verde);line-height:1.5"
+                                        >
+                                            <strong>
+                                                Ya has votado en esta
+                                                votación.
+                                            </strong>{" "}
+                                            Tu papeleta está en la urna y
+                                            cuenta una sola vez.
+                                        </div>
+                                    ) : (
                                     <div>
                                         {cfg.enableDoubleVerification &&
                                             !voter.hasDoubleAccount &&
@@ -263,6 +294,7 @@ if (voter) {
                                             style="display:none"
                                         />
                                     </div>
+                                    )
                                 ) : (
                                     /* Votación CERRADA: Gráfico circular de resultados y desglose doble vs normal */
                                     <div
