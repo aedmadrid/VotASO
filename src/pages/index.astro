@@ -29,6 +29,11 @@ const voter = await resolveAuthenticatedVoter(Astro.request, cfg);
 //    "registrados" y ninguna votación se oculta por falta de condición de socio.
 let elecciones: any[] = [];
 
+// Votaciones en las que este elector ya participó. Se declara fuera del
+// `if (voter)` porque la plantilla lo consulta también fuera de ese bloque
+// (antes provocaba `ReferenceError: yaVotado is not defined` al pintar).
+const yaVotado: Record<string, boolean> = {};
+
 if (voter) {
     const eleccionesRaw = await listarElecciones(URNA_D1);
     const nowMs = Date.now();
@@ -79,7 +84,6 @@ if (voter) {
     // Marca las votaciones donde este elector ya participó (no se le
     // ofrece el formulario: vería el error "ya registrado" al votar).
     const uniqueVoterId = voter.sub || voter.email || "";
-    const yaVotado: Record<string, boolean> = {};
     if (uniqueVoterId) {
         await Promise.all(
             elecciones.map(async (el) => {
