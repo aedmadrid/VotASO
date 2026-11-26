@@ -107,7 +107,7 @@ if (voter) {
     <main class="page">
         <div class="top-header">
             <div class="title-block">
-                <h1 class="page-title" style="margin-bottom:0">
+                <h1 class="page-title">
                     VotASO
                 </h1>
                 {voter && (
@@ -119,7 +119,7 @@ if (voter) {
             </div>
             {voter && (
                 <div class="top-links">
-                    {voter.isAdmin && (
+                    {voter.isAdmin && !enApp && !enEmbed && (
                         <a href="/admin" class="text-sm text-muted">
                             ADMIN
                         </a>

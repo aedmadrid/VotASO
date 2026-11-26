@@ -149,6 +149,55 @@ a {
     margin-bottom: var(--space-8);
 }
 
+/* Cabecera de la portada: título a la izquierda y enlaces a la derecha. */
+.top-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--space-4);
+}
+
+.top-links {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    flex-shrink: 0;
+}
+
+/* Dentro de la app (?app=1) y en el iframe de VerificASO (?embed=1) la
+   portada se comporta como las páginas de aedm.org.es: sin enlaces de chrome,
+   título centrado y el mismo tamaño y aire que allí (40px en móvil, 60px en
+   escritorio, 200/300 de peso y 16px de margen lateral). */
+body.in-app .top-links,
+body.in-app .back-link {
+    display: none;
+}
+
+body.in-app .page {
+    padding-top: 80px;
+    padding-inline: 16px;
+}
+
+body.in-app .page-title {
+    text-align: center;
+    font-size: 60px;
+    /* Idéntico a aedm.org.es: interlineado `normal` (no 1.1) y 26.8px arriba
+       y abajo, para que el alto y el aire coincidan al píxel. */
+    line-height: normal;
+    margin: 26.8px 0;
+}
+
+body.in-app .page-subtitle {
+    text-align: center;
+}
+
+@media (max-width: 600px) {
+    body.in-app .page-title {
+        font-size: 40px;
+        font-weight: 300;
+    }
+}
+
 .back-link {
     display: inline-flex;
     align-items: center;
