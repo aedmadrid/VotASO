@@ -2,32 +2,82 @@
 import Default from "../layouts/Default.astro";
 import MarkdownEditor from "../components/MarkdownEditor.tsx";
 import { censusSociosDisponible, getBindings, getConfig } from "../lib/config";
-import { resolveAuthenticatedVoter } from "../lib/session";
+import {
+    createSignedToken,
+    nombreCookieSesion,
+    resolveVoterFromAppToken,
+} from "../lib/session";
 import { listarElecciones } from "../lib/urna";
+import { hmacSha256Hex } from "../lib/crypto";
 
 const cfg = getConfig();
 const { URNA_D1 } = getBindings();
-const voter = await resolveAuthenticatedVoter(Astro.request, cfg);
+
+// El admin de VotaSO ya no expone su propio login: se entra desde VerificASO.
+// Sin `embed=1&app_token=…`, se redirige al panel de administración de
+// VerificASO, que es quien autentica y autoriza al administrador.
+const embedMode = Astro.url.searchParams.get("embed") === "1";
+const appToken = (Astro.url.searchParams.get("app_token") || "").trim();
+
+if (!embedMode || !appToken) {
+    return Astro.redirect(cfg.adminEmbedUrl, 302);
+}
+
+// Dentro del iframe NO se redirige a VerificASO (daría un bucle): un token
+// inválido se responde con 401 y un usuario sin `is_admin` con 403.
+const voter = await resolveVoterFromAppToken(appToken, cfg);
+
+if (!voter) {
+    return new Response(
+        "Token de acceso inválido o caducado. Vuelve a entrar desde el panel de administración de VerificASO.",
+        { status: 401 },
+    );
+}
+
+// VerificASO firma el «es admin» sobre el token (HMAC): no dependemos de
+// claims del userinfo ni de listas de correos. El claim se sigue aceptando.
+const adminSig = Astro.url.searchParams.get("admin_sig") || "";
+const firmaValida =
+    Boolean(cfg.adminEmbedSecret) &&
+    adminSig !== "" &&
+    (await hmacSha256Hex(cfg.adminEmbedSecret, appToken)) === adminSig;
+
+if (!voter.isAdmin && !firmaValida) {
+    return new Response(
+        "Tu cuenta no tiene permisos de administración.",
+        { status: 403 },
+    );
+}
+
+// El token es válido y el usuario es administrador. Se crea una sesión firmada
+// para que las llamadas internas del panel a /api/admin/elecciones (que se
+// autentican por cookie de sesión) reconozcan al administrador.
+const sessionToken = await createSignedToken({ voter }, cfg.secretSalt, 7200);
+Astro.cookies.set(nombreCookieSesion(Astro.url.protocol === "https:"), sessionToken, {
+    httpOnly: true,
+    sameSite: "lax",
+    path: "/",
+    maxAge: 7200,
+    secure: Astro.url.protocol === "https:",
+});
 
 // Si el proveedor OAuth no distingue socios, el censo `solo_socios` no se
 // ofrece: la opción desaparece del panel y el servidor la degrada a
 // `registrados` aunque se solicite a mano.
-const puedeCensoSocios = voter
-    ? censusSociosDisponible(cfg, voter.tieneClaimsDePertenencia)
-    : false;
+const puedeCensoSocios = censusSociosDisponible(cfg, voter.tieneClaimsDePertenencia);
 
-if (!voter) {
-    return Astro.redirect(`/auth/login?next=${encodeURIComponent("/admin")}`);
-}
-
-const elecciones = voter.isAdmin ? await listarElecciones(URNA_D1) : [];
+const elecciones = await listarElecciones(URNA_D1);
 ---
 
 <Default title="Admin — VotASO">
     <main class="page">
-        <a href="/" class="back-link text-sm text-muted">
-            ← Volver
-        </a>
+        {/* En modo embebido (iframe de VerificASO) no se muestra la cabecera de
+            la app: solo el contenido del panel de administración. */}
+        {!embedMode && (
+            <a href="/" class="back-link text-sm text-muted">
+                ← Volver
+            </a>
+        )}
 
         {!voter.isAdmin ? (
             <div>

@@ -1,4 +1,5 @@
 import { defineMiddleware } from "astro:middleware";
+import { adminEmbedOrigin, getConfig } from "./lib/config";
 
 /**
  * Cabeceras de seguridad y protección CSRF aplicados a todas las respuestas.
@@ -12,6 +13,18 @@ import { defineMiddleware } from "astro:middleware";
  */
 export const onRequest = defineMiddleware(async (context, next) => {
     const { request, url } = context;
+
+    const cfg = getConfig();
+
+    // El panel de administración embebido (`/admin?embed=1`) se muestra dentro
+    // de un iframe de VerificASO. Para esa única ruta se permite el anidamiento
+    // desde el origen del panel externo; el resto del sitio sigue protegido
+    // frente a clickjacking (`frame-ancestors 'none'` + `X-Frame-Options: DENY`).
+    const esAdminEmbebido =
+        url.pathname === "/admin" && url.searchParams.get("embed") === "1";
+    const origenAdmin = adminEmbedOrigin(cfg);
+    const frameAncestors =
+        esAdminEmbebido && origenAdmin ? origenAdmin : "'none'";
 
     // --- Protección CSRF por origen ---
     //
@@ -44,7 +57,14 @@ export const onRequest = defineMiddleware(async (context, next) => {
     const headers = new Headers(response.headers);
 
     // Impide que la página se incruste en un iframe de otro sitio (clickjacking).
-    headers.set("X-Frame-Options", "DENY");
+    // La excepción es el admin embebido, que solo puede anidarse desde el panel
+    // externo (VerificASO). `ALLOW-FROM` es ignorado por los navegadores
+    // modernos, que usan la directiva `frame-ancestors` de la CSP (más abajo).
+    if (esAdminEmbebido && origenAdmin) {
+        headers.set("X-Frame-Options", `ALLOW-FROM ${origenAdmin}`);
+    } else {
+        headers.set("X-Frame-Options", "DENY");
+    }
 
     // Evita que el navegador interprete la respuesta con un MIME distinto al declarado.
     headers.set("X-Content-Type-Options", "nosniff");
@@ -86,7 +106,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
             "font-src 'self'",
             "connect-src 'self'",
             "form-action 'self'",
-            "frame-ancestors 'none'",
+            `frame-ancestors ${frameAncestors}`,
             "base-uri 'self'",
             "object-src 'none'",
             "upgrade-insecure-requests",

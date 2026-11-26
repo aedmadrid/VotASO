@@ -56,6 +56,15 @@ export interface VotasoConfig {
   pesoVotoFiable: number;
   /** Peso del voto sin verificación doble en el recuento. */
   pesoVotoOrdinario: number;
+  /**
+   * URL del panel de administración externo (p. ej. VerificASO) al que se
+   * redirige `/admin` cuando la petición no trae `embed=1&app_token=…`.
+   * El admin de VotaSO deja de exponer su propio login: la identidad del
+   * administrador se valida en ese panel y vuelve vía `app_token`.
+   */
+  adminEmbedUrl: string;
+  /** Secreto para verificar el «es admin» firmado que manda VerificASO. */
+  adminEmbedSecret: string;
 }
 
 /**
@@ -181,6 +190,8 @@ export function getConfig(overrideEnv?: EnvRecord): VotasoConfig {
     membershipMode,
     pesoVotoFiable,
     pesoVotoOrdinario,
+    adminEmbedUrl: String(env.ADMIN_EMBED_URL || "https://verificaso.aedm.org.es/admin/votaso"),
+    adminEmbedSecret: String(env.ADMIN_EMBED_SECRET || ""),
   };
 }
 
@@ -348,4 +359,18 @@ export function censusSociosDisponible(
   // Modo "auto": si aún no hay evidencia (p. ej. un administrador que entra por
   // una vía que no aporta claims), se permite para no bloquear el uso.
   return tieneClaimsDePertenencia !== false;
+}
+
+/**
+ * Origen (scheme://host[:port]) del panel de administración embebido, derivado
+ * de `adminEmbedUrl`. Se usa en el middleware para permitir el iframe de ese
+ * panel en la CSP (`frame-ancestors`) únicamente en la ruta `/admin?embed=1`.
+ * Devuelve cadena vacía si la URL no es parseable.
+ */
+export function adminEmbedOrigin(cfg: VotasoConfig): string {
+  try {
+    return new URL(cfg.adminEmbedUrl).origin;
+  } catch {
+    return "";
+  }
 }

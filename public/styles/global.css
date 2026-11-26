@@ -1,11 +1,26 @@
+/* Fuentes de la web de la AEDM (aedm.astro): variables, un fichero por familia. */
 @font-face {
     font-family: MainFont;
-    src: url("/fonts/NeueMontreal-Regular.ttf") format(truetype);
+    src: url("/fonts/SchibstedGrotesk-VariableFont_wght.ttf") format("truetype");
+    font-weight: 200 900;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: MainFont;
+    src: url("/fonts/SchibstedGrotesk-Italic-VariableFont_wght.ttf") format("truetype");
+    font-weight: 200 900;
+    font-style: italic;
+    font-display: swap;
 }
 
 @font-face {
     font-family: TitleFont;
-    src: url("/fonts/PKiko-Regular.otf");
+    src: url("/fonts/StickNoBills-VariableFont_wght.ttf") format("truetype");
+    font-weight: 200 300;
+    font-style: normal;
+    font-display: swap;
 }
 
 
@@ -129,7 +144,7 @@ a {
 .page-title {
     font-family: var(--font-display);
     font-size: var(--text-2xl);
-    font-weight: 400;
+    font-weight: 200;
     line-height: 1.1;
     margin-bottom: var(--space-8);
 }
@@ -343,5 +358,14 @@ a {
 @media (max-width: 600px) {
     .page {
         padding: var(--space-4);
+    }
+}
+
+/* Pesos del título por dispositivo — misma regla que EditorDeHorarios
+   (allí: mobile ? StickNoBills_300Light : StickNoBills_200ExtraLight):
+   en pantalla pequeña el 200 queda demasiado fino, así que sube a 300. */
+@media (max-width: 719px) {
+    .page-title {
+        font-weight: 300;
     }
 }

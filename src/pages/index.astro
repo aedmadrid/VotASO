@@ -22,6 +22,10 @@ if (appTokenEntrante) {
 }
 
 const voter = await resolveAuthenticatedVoter(Astro.request, cfg);
+// Dentro de la app (?app=1) se ocultan acciones que no tienen sentido en el webview.
+const enApp = Astro.url.searchParams.get("app") === "1";
+// Dentro del iframe de VerificASO (?embed=1) tampoco se muestra el logout.
+const enEmbed = Astro.url.searchParams.get("embed") === "1";
 
 // 1) Las votaciones SOLO se muestran si se ha iniciado sesión.
 // 2) Si es para "solo_socios" y el usuario no es socio, NO aparece en su lista.
@@ -120,9 +124,14 @@ if (voter) {
                             ADMIN
                         </a>
                     )}
-                    <a href="/auth/logout" class="text-sm text-muted">
-                        SALIR
-                    </a>
+                    {/* Dentro de la app (?app=1) o del iframe de VerificASO (?embed=1)
+                        no se ofrece cerrar sesión: en la app el webview no puede
+                        volver al login y en el iframe no hay cabecera propia. */}
+                    {!enApp && !enEmbed && (
+                        <a href="/auth/logout" class="text-sm text-muted">
+                            SALIR
+                        </a>
+                    )}
                 </div>
             )}
         </div>

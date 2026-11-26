@@ -5,6 +5,9 @@ import react from "@astrojs/react";
 // https://astro.build/config
 export default defineConfig({
   output: "server",
+  // Dev en IPv4: `localhost` puede resolver a ::1 y entonces las sondas de
+  // readiness (y cualquier cliente que use 127.0.0.1) reciben conexión rechazada.
+  server: { host: "127.0.0.1" },
   // React SOLO para el editor Markdown del contexto de la votación en /admin (MDXEditor, igual que en VerificASO).
   integrations: [react()],
   security: {

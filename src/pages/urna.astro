@@ -9,10 +9,17 @@
  */
 import Default from "../layouts/Default.astro";
 import { getBindings, getConfig } from "../lib/config";
+import { resolveAuthenticatedVoter } from "../lib/session";
 import { auditarUrna, listarElecciones } from "../lib/urna";
 
 const cfg = getConfig();
 const { URNA_D1 } = getBindings();
+
+// La urna es pública, pero se resuelve la sesión para mostrar el enlace
+// «SALIR» en la cabecera solo a quien tiene sesión iniciada.
+const voter = await resolveAuthenticatedVoter(Astro.request, cfg);
+const enApp = Astro.url.searchParams.get("app") === "1";
+const enEmbed = Astro.url.searchParams.get("embed") === "1";
 
 const eleccionId = Astro.url.searchParams.get("eleccion_id");
 const [{ rows, resumen }, elecciones] = await Promise.all([
@@ -63,6 +70,15 @@ const formatoFecha = (ts: number) =>
                     encadenada criptográficamente: no contiene datos personales.
                 </p>
             </div>
+            {/* Cabecera mínima: SALIR a la derecha, salvo en la app (?app=1)
+                o en el iframe de VerificASO (?embed=1). */}
+            {voter && !enApp && !enEmbed && (
+                <div class="top-links">
+                    <a href="/auth/logout" class="text-sm text-muted">
+                        SALIR
+                    </a>
+                </div>
+            )}
         </div>
 
         <section class="block">
@@ -177,6 +193,10 @@ const formatoFecha = (ts: number) =>
             justify-content: space-between;
             align-items: baseline;
             margin-bottom: var(--space-8);
+            gap: var(--space-4);
+        }
+        .top-links {
+            display: flex;
             gap: var(--space-4);
         }
         .block {

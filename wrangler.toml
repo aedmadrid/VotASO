@@ -57,6 +57,11 @@ OAUTH_TOKEN_URL = "https://verificaso.aedm.org.es/api/oauth/token"
 OAUTH_USERINFO_URL = "https://verificaso.aedm.org.es/api/oauth/userinfo"
 OAUTH_SCOPES = "identity profile.email.esd profile.id_educamadrid profile.name profile.membership"
 
+# Panel de administración externo al que redirige /admin cuando la petición no
+# trae `embed=1&app_token=…`. El admin de VotaSO ya no expone su propio login:
+# VerificASO autentica al administrador y lo devuelve con un access token.
+ADMIN_EMBED_URL = "https://verificaso.aedm.org.es/admin/votaso"
+
 # Mapeo agnóstico de campos JSON devueltos por OAUTH_USERINFO_URL
 CLAIM_ID = "sub"
 CLAIM_EMAIL = "email"

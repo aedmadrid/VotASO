@@ -2,7 +2,7 @@
  * session.ts — Sesiones OAuth2 firmadas con HMAC-SHA256 y resolución de identidad.
  */
 import { base64UrlEncode, hmacSha256Hex, timingSafeEqual } from "./crypto";
-import { normalizeVoterIdentity, type VotasoConfig } from "./config";
+import { normalizeVoterIdentity, resolveRawEnv, type VotasoConfig } from "./config";
 import type { VoterIdentity } from "../env";
 
 export const SESSION_COOKIE = "__Host-votaso_session";
@@ -160,6 +160,50 @@ export async function resolveAuthenticatedVoter(
     },
     cfg,
   );
+}
+
+/**
+ * Worker-a-Worker vía binding (evita el bloqueo 522), igual que en callback.ts.
+ */
+async function oauthFetch(url: string, init: RequestInit): Promise<Response> {
+  const env = resolveRawEnv();
+  const svc = env.OAUTH_SERVICE as { fetch: typeof fetch } | undefined;
+  if (svc && typeof svc.fetch === "function") {
+    try {
+      return await svc.fetch(new Request(url, init));
+    } catch {
+      // Fallback a fetch estándar
+    }
+  }
+  return fetch(url, init);
+}
+
+/**
+ * Valida un access token OAuth contra el userinfo del proveedor y devuelve la
+ * identidad normalizada, o `null` si el token es inválido/caducado o no trae
+ * identificador. Es la vía de entrada del admin embebido (`/admin?embed=1&app_token=…`):
+ * la identidad —incluido el claim `is_admin`— se obtiene del IdP, no de una
+ * cabecera confiada por el cliente.
+ */
+export async function resolveVoterFromAppToken(
+  appToken: string,
+  cfg: VotasoConfig,
+): Promise<VoterIdentity | null> {
+  try {
+    const userRes = await oauthFetch(cfg.oauthUserinfoUrl, {
+      headers: {
+        Authorization: `Bearer ${appToken}`,
+        Accept: "application/json",
+      },
+    });
+    if (!userRes.ok) return null;
+    const rawUserInfo: Record<string, any> = await userRes.json();
+    const voter = normalizeVoterIdentity(rawUserInfo, cfg);
+    if (!voter.sub && !voter.email) return null;
+    return voter;
+  } catch {
+    return null;
+  }
 }
 
 /**

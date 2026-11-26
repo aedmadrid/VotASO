@@ -461,14 +461,16 @@ describe("VotASO (Astro + TypeScript) — Criptografía, Censo y OAuth Agnóstic
           });
 
           // Votación declarada de socios, pero el proveedor no distingue socios.
-          await URNA_D1.prepare("INSERT INTO elecciones VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+          // El mock del binding reproduce las 9 columnas que consume `listarElecciones`
+          // (id, título, descripción, opciones, censo, inicio, fin, creador, creado),
+          // sin el literal `estado` que usa el INSERT de producción.
+          await URNA_D1.prepare("INSERT INTO elecciones VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
               .bind(
                   "asamblea-general",
                   "Asamblea General",
                   "Sin capacidad de socios",
                   JSON.stringify(["Sí", "No"]),
                   "solo_socios",
-                  "abierta",
                   Date.now(),
                   null,
                   "admin@ejemplo.org",
@@ -552,14 +554,13 @@ describe("VotASO (Astro + TypeScript) — Criptografía, Censo y OAuth Agnóstic
               OAUTH_AUTH_URL: "https://verificaso.aedm.org.es/oauth/authorize",
           });
 
-          await URNA_D1.prepare("INSERT INTO elecciones VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+          await URNA_D1.prepare("INSERT INTO elecciones VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
               .bind(
                   "asamblea-socios-pond",
                   "Asamblea de Socios",
                   "Censo acotado",
                   JSON.stringify(["Sí", "No"]),
                   "solo_socios",
-                  "abierta",
                   Date.now(),
                   null,
                   "admin@ejemplo.org",
@@ -662,5 +663,19 @@ describe("VotASO (Astro + TypeScript) — Criptografía, Censo y OAuth Agnóstic
           // El mismo elector genera siempre la misma clave.
           const claveRepetida = await buildPadronKey("general", "AbC", "sal");
           expect(claveA).toBe(claveRepetida);
+      });
+
+      it("18. El admin embebido redirige a la URL configurada por defecto", () => {
+          // Por defecto apunta al panel de administración de VerificASO.
+          const cfgPorDefecto = getConfig({});
+          expect(cfgPorDefecto.adminEmbedUrl).toBe(
+              "https://verificaso.aedm.org.es/admin/votaso",
+          );
+
+          // Y es configurable por variable de entorno para otras organizaciones.
+          const cfgCustom = getConfig({
+              ADMIN_EMBED_URL: "https://admin.otra-org.edu/panel",
+          });
+          expect(cfgCustom.adminEmbedUrl).toBe("https://admin.otra-org.edu/panel");
       });
   });
